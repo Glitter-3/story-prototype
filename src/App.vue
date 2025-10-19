@@ -8,92 +8,101 @@
           <span class="logo-text">Photo Story AI</span>
         </div>
       </div>
+
+      <!-- ✅ 改为可点击切换 -->
       <div class="header-nav">
-        <div class="nav-item">
-          <span class="nav-number">1</span>
-          <span class="nav-text">导入与提问</span>
-          <span class="nav-check">✓</span>
-        </div>
-        <div class="nav-item active">
-          <span class="nav-number">2</span>
-          <span class="nav-text">图文创作</span>
-        </div>
-        <div class="nav-item">
-          <span class="nav-number">3</span>
-          <span class="nav-text">视频预览</span>
+        <div 
+          v-for="stage in 5" 
+          :key="stage"
+          class="nav-item"
+          :class="{ active: currentStage === stage }"
+          @click="switchStage(stage)"
+        >
+          <span class="nav-number">{{ stage }}</span>
+          <span class="nav-text">Stage {{ stage }}</span>
         </div>
       </div>
+
       <div class="header-right">
         <button class="save-btn">💾 保存</button>
         <button class="export-btn">📤 导出</button>
       </div>
     </header>
 
+    <!-- 以下内容保持不变 -->
     <div class="main-content">
-      <!-- 左侧边栏 -->
-      <aside class="sidebar">
-        <div class="sidebar-section">
-          <h3>📚 故事章节</h3>
-          <div class="chapter-list">
-            <div class="chapter-item active">
-              <span class="chapter-icon">📝</span>
-              <span>高中时期</span>
-            </div>
-            <div class="chapter-item">
-              <span class="chapter-icon">📝</span>
-              <span>军校求学</span>
-            </div>
-            <div class="chapter-item">
-              <span class="chapter-icon">📝</span>
-              <span>与爱人结婚</span>
-            </div>
-          </div>
-          <button class="add-chapter-btn">+ 添加章节</button>
-        </div>
-      </aside>
-
       <!-- 中间内容区 -->
       <section class="content-area" ref="contentArea">
-        <!-- 照片面板 - 高度减小 -->
+        <!-- 照片面板 -->
         <div class="photo-panel" :style="{ height: photoPanelHeight + 'px' }">
           <div class="panel-header">
             <h2>📷 照片面板</h2>
             <div class="panel-controls">
-              <button class="control-btn">➕ 添加照片</button>
-              <button class="control-btn primary">✓ 确认新增图片</button>
+              <!-- 隐藏的文件选择框 -->
+              <input 
+                type="file" 
+                ref="fileInput"
+                multiple
+                accept="image/*"
+                @change="handleFileChange"
+                style="display: none;"
+              />
+              <!-- Stage 1 显示上传照片按钮 -->
+              <button button v-if="currentStage === 1" class="control-btn" @click="addPhoto">➕ 添加照片</button>
+              <button button v-if="currentStage === 1" class="control-btn" @click="confirmUpload">确认上传图片</button>
+
             </div>
           </div>
-          
+          <!--统一的照片展示区，Stage1~5-->
           <div class="photo-grid">
-            <div class="photo-slot" v-for="n in 5" :key="n">
-              <div class="photo-placeholder">
-                <span class="photo-number">{{ n }}</span>
-                <span class="add-icon">+</span>
+            <div class="photo-slot" v-for="(photo, index) in photos" :key="index">
+              <div class="photo-placeholder" @click="triggerFileInput(index)" v-if="currentStage === 1">
+                <!--Stage 1 显示可添加的占位符-->
+                <template v-if="photo.url">
+                  <img :src="photo.url" class="photo-preview" alt="预览图片" />
+                </template>
+                <template v-else>
+                  <span class="photo-number">{{ index + 1 }}</span>
+                  <span class="add-icon">+</span>
+                </template>
               </div>
+              <div class="photo-placeholder" v-else>
+                <!-- Stage 2~5 显示已上传的照片，不允许修改 -->
+                <template v-if="photo.url">
+                  <img :src="photo.url" class="photo-preview" alt="预览图片" />
+                </template>
+                <template v-else>
+                  <span class="photo-number">{{ index + 1 }}</span>
+                  <span class="add-icon">+</span>
+                </template>
+              </div>  
             </div>
           </div>
-          
-          <div class="photo-caption">1995年夏天的院子</div>
         </div>
 
         <!-- 可拖拽分隔条 -->
-        <div class="resize-handle" 
-             @mousedown="startResize"
-             :class="{ 'resizing': isResizing }">
-          <div class="handle-line"></div>
+        <div 
+          class="resize-handle" 
+          @mousedown="startResize"
+          :class="{ 'resizing': isResizing }">
+       <div class= "handle-line"></div>
         </div>
 
-        <!-- 叙事文本 - 占据剩余空间 -->
+        <!-- 叙事文本 -->
         <div class="narrative-section" :style="{ flex: 1 }">
           <div class="panel-header">
-            <h3>📝 叙事文本</h3>
+            <h3>📝 用户口述</h3>
             <div class="panel-controls">
-              <button class="control-btn" @click="generateImages">🎨 触发图片生成</button>
-              <button class="control-btn" @click="reselectText">🔄 重新选择语句</button>
+              <!-- <button class="control-btn" @click="generateImages">图像补全</button> -->
+              <button class="control-btn" @click="calculateMemoryMetrics">计算记忆指标</button>
+              <button class="control-btn" @click="reselectText">🔄 重新口述</button>
+
+              <!-- 仅 Stage 3 显示图像补全按钮 -->
+              <button v-if="currentStage === 3" class="control-btn" @click="generateImages">图像补全</button>
             </div>
           </div>
           
-          <div class="narrative-content" @mouseup="handleTextSelection">
+          <!-- <div class="narrative-content" @mouseup="handleTextSelection">
             <p>
               第一阶段：高中时期 大约是在1995年，那时我刚上高一。因为座位靠得近，很自然地认识了
               <span :class="{ 'highlighted': highlightedTexts.includes(0) }" @click="toggleHighlight(0)">静静和哲哲</span>，
@@ -103,12 +112,20 @@
               我们有些不好意思，表情都挺僵硬。现在回头看，那是我们三个人难得停下来留下的影像。
               虽然如今大家分隔在不同城市，但还保持联系，会互相分享现在的生活近况。
             </p>
+          </div> -->
+          <div class="narrative-content">
+            <textarea
+              v-model="userNarratives[currentStage]"
+              placeholder="请在此输入您对这阶段照片的描述、回忆或故事……"
+              rows="8"
+              class="narrative-input"
+            ></textarea>
           </div>
         </div>
       </section>
 
       <!-- 右侧AI助手 -->
-      <aside class="ai-assistant">
+      <aside class="ai-assistant" v-if="currentStage !== 1">
         <div class="assistant-header">
           <h3>🤖 AI创作助手</h3>
           <span class="status-indicator">● 在线</span>
@@ -118,14 +135,16 @@
           <div class="progress-bar">
             <div class="progress-fill" :style="{ width: progressPercentage + '%' }"></div>
           </div>
-          <span class="progress-text">{{ answeredCount }}/5 问题已回答</span>
+          <span class="progress-text">{{ answeredCount }}/{{ questions.length }} 问题已回答</span>
         </div>
 
         <div class="questions-container">
-          <div v-for="(question, index) in questions" 
-               :key="index"
-               class="question-card"
-               :class="{ active: currentQuestionIndex === index, answered: question.answered }">
+          <div 
+            v-for="(question, index) in questions" 
+            :key="index"
+            class="question-card"
+            :class="{ active: currentQuestionIndex === index, answered: question.answered }">
+            
             <div class="question-header">
               <span class="question-number">{{ index + 1 }}</span>
               <span v-if="question.answered" class="answered-badge">✓</span>
@@ -133,18 +152,16 @@
             
             <p class="question-text">{{ question.text }}</p>
             
-            <div class="answer-actions" v-if="currentQuestionIndex === index && !question.answered">
-              <button class="action-btn text-btn" @click="showTextInput(index)">📝 文字输入</button>
-              <button class="action-btn voice-btn" @click="startVoice(index)">🎤 语音回答</button>
+            <div v-if="currentQuestionIndex === index && !question.answered" class="answer-actions">
+              <button class="action-btn text-btn" @click="showTextInput(index)">📝 文字输入</button>             
               <button class="action-btn skip-btn" @click="skipQuestion(index)">⏭️ 跳过</button>
             </div>
             
             <div v-if="question.showInput && !question.answered" class="text-input-area">
-              <textarea 
+              <textarea
                 v-model="question.answer"
                 placeholder="请输入您的回答..."
-                rows="3">
-              </textarea>
+                rows="3"></textarea>
               <button class="submit-btn" @click="submitAnswer(index)">确认</button>
             </div>
             
@@ -163,49 +180,29 @@
 </template>
 
 <script>
+import axios from 'axios'
 export default {
   name: 'PhotoStoryAI',
   data() {
     return {
+      currentStage: 1, // ✅ 默认Stage 1
       photoPanelHeight: 280,
       isResizing: false,
       startY: 0,
       startHeight: 0,
       highlightedTexts: [],
       selectedText: '',
+      photos: [], 
+      uploadTargetIndex: null,
+      userNarratives: {
+        1: '',
+        2: '',
+        3: '',
+        4: '',
+        5: ''
+      },
       currentQuestionIndex: 0,
-      questions: [
-        {
-          text: '合影中的三个人是怎么认识的？你们之间的关系在当时是怎样的？',
-          answered: false,
-          answer: '',
-          showInput: false
-        },
-        {
-          text: '这两位朋友中，有没有哪一个对你特别重要、影响很深？为什么？',
-          answered: false,
-          answer: '',
-          showInput: false
-        },
-        {
-          text: '大致是哪一年拍摄的？你当时正处于高中哪一学年？',
-          answered: false,
-          answer: '',
-          showInput: false
-        },
-        {
-          text: '那个阶段你正经历着怎样的成长或压力？有没有特别的考试、事件记忆犹新？',
-          answered: false,
-          answer: '',
-          showInput: false
-        },
-        {
-          text: '照片是在哪里拍的？是在学校某个特别的角落，还是某次出游中？',
-          answered: false,
-          answer: '',
-          showInput: false
-        }
-      ]
+      questions: [], // Qwen返回的问题
     }
   },
   computed: {
@@ -217,6 +214,41 @@ export default {
     }
   },
   methods: {
+    // 切换阶段
+    switchStage(stage) {
+      this.currentStage = stage
+      console.log(`已切换到 Stage ${stage}`)
+      if (stage === 2){
+        this.fetchQuestions()
+      }
+    },
+    // 获取问题
+    async fetchQuestions() {
+      try {
+        // 把每张照片转成 base64
+        const base64Photos = await Promise.all(
+          this.photos.map(photo => this.convertToBase64(photo.file))
+        );
+
+        const response = await axios.post('http://127.0.0.1:5000/generate-questions', {
+          photos: base64Photos,  // 发送 Base64 编码图片
+          narratives: this.userNarratives[1],  // 获取 Stage 1 的口述文本
+        });
+
+        this.questions = response.data.questions || [];
+      } catch (error) {
+        console.error("Error fetching questions:", error);
+      }
+    },
+    convertToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = (error) => reject(error);
+        reader.readAsDataURL(file); // 直接读取为 Base64
+      });
+    },
+
     startResize(e) {
       this.isResizing = true
       this.startY = e.clientY
@@ -224,6 +256,47 @@ export default {
       document.addEventListener('mousemove', this.doResize)
       document.addEventListener('mouseup', this.stopResize)
     },
+    addPhoto() {
+      // this.photos.push({})
+      this.$refs.fileInput.click()
+      console.log('已添加一个新的照片面板')
+    },
+    triggerFileInput(index) {
+      this.uploadTargetIndex = index
+      this.$refs.fileInput.click()
+    },
+    confirmUpload() {
+      if (this.photos.every(photo => !photo.file)) {
+        alert("请先选择图片！")
+        return
+      }
+      console.log("准备上传的图片：", this.photos.map(p => p.name))
+      // 未来在这里调用 Qwen API 或上传到服务器
+    },
+    handleFileChange(event) {
+      const files = Array.from(event.target.files)
+      if (!files.length) return
+
+      const file = files[0]
+      const newPhoto = {
+        file,
+        url: URL.createObjectURL(file),
+        name: file.name,
+      }
+
+      // ✅ 如果点击的是指定槽位，则替换那一项
+      if (this.uploadTargetIndex !== null) {
+        this.photos[this.uploadTargetIndex] = newPhoto
+        this.uploadTargetIndex = null
+      } else {
+        // ✅ 否则添加新照片
+        this.photos.push(newPhoto)
+      }
+
+      console.log('已选择图片：', file.name)
+      event.target.value = ''
+    },
+
     doResize(e) {
       if (!this.isResizing) return
       const diff = e.clientY - this.startY
@@ -243,40 +316,65 @@ export default {
     },
     toggleHighlight(index) {
       const idx = this.highlightedTexts.indexOf(index)
-      if (idx > -1) {
-        this.highlightedTexts.splice(idx, 1)
-      } else {
-        this.highlightedTexts.push(index)
-      }
+      if (idx > -1) this.highlightedTexts.splice(idx, 1)
+      else this.highlightedTexts.push(index)
+    },
+    calculateMemoryMetrics() {
+      const stage = this.currentStage
+      const content = this.userNarratives[stage]
+
+      // ✅ 将当前Stage的内容“保存”下来
+      // （这里示范打印，后续你可以改为上传或进一步处理）
+      console.log(`Stage ${stage} 的口述内容已保存：`, content)
+
+      // （可选）如果希望用户看到提示
+      this.$message?.success?.(`第 ${stage} 阶段的口述内容已保存`) 
+      // 或者用 alert:
+      alert(`第 ${stage} 阶段的口述内容已保存`)
     },
     generateImages() {
+      const narrative = this.userNarratives[2]; // 获取 Stage 2 的口述文本
+      // 先调用Qwen API分句，并生成文生图的prompt，再调用Kling根据prompt和原始输入图像生成新图片
       console.log('触发图片生成')
     },
     reselectText() {
       this.highlightedTexts = []
-      console.log('重新选择语句')
+      this.userNarratives[this.currentStage] = ''
+      console.log('已清空用户口述内容')
     },
     showTextInput(index) {
       this.questions[index].showInput = true
     },
-    startVoice(index) {
-      console.log('开始语音输入', index)
-    },
     skipQuestion(index) {
       this.questions[index].answered = true
-      if (index < this.questions.length - 1) {
-        this.currentQuestionIndex = index + 1
-      }
+      if (index < this.questions.length - 1) this.currentQuestionIndex = index + 1
     },
+    // submitAnswer(index) {
+    //   if (this.questions[index].answer.trim()) {
+    //     this.questions[index].answered = true
+    //     this.questions[index].showInput = false
+    //     if (index < this.questions.length - 1) this.currentQuestionIndex = index + 1
+    //   }
+    // },
+    // 处理用户回答问题
     submitAnswer(index) {
-      if (this.questions[index].answer.trim()) {
-        this.questions[index].answered = true
-        this.questions[index].showInput = false
-        if (index < this.questions.length - 1) {
-          this.currentQuestionIndex = index + 1
+      const question = this.questions[index];
+      if (!question.answer.trim()) return; // 如果答案为空不提交
+
+      question.answered = true;
+      question.answer = question.answer.trim();
+      question.showInput = false; // 关闭当前输入框
+
+      // 自动切换到下一个未回答的问题
+      for (let i = index + 1; i < this.questions.length; i++) {
+        if (!this.questions[i].answered) {
+          this.currentQuestionIndex = i;
+          return;
         }
       }
-    }
+      // 如果所有问题都已回答，则保持最后一个
+      this.currentQuestionIndex = index;
+    },
   }
 }
 </script>
@@ -589,6 +687,13 @@ export default {
   font-size: 13px;
 }
 
+.photo-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
 /* 可拖拽分隔条 */
 .resize-handle {
   height: 12px;
@@ -860,4 +965,25 @@ export default {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(195, 201, 232, 0.4);
 }
+
+.narrative-input {
+  width: 100%;
+  height: 100%;
+  border: none;
+  outline: none;
+  resize: none;
+  font-size: 15px;
+  line-height: 1.8;
+  color: #444;
+  background: #fafbfc;
+  font-family: inherit;
+  padding: 8px;
+  border-radius: 6px;
+}
+
+.narrative-input::placeholder {
+  color: #aaa;
+  font-style: italic;
+}
+
 </style>
