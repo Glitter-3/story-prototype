@@ -171,9 +171,13 @@
           </div>
         </div>
 
-        <button class="update-narrative-btn">
-          ✨ 更新叙事文本
+        <!-- 替换 Stage2~5 的按钮 -->
+        <button v-if="currentStage >= 2 && currentStage <= 5" 
+                class="control-btn primary"
+                @click="fetchQuestions">
+          开始提问
         </button>
+
       </aside>
     </div>
   </div>
@@ -181,6 +185,7 @@
 
 <script>
 import axios from 'axios'
+import { toRaw } from 'vue'
 export default {
   name: 'PhotoStoryAI',
   data() {
@@ -203,6 +208,7 @@ export default {
       },
       currentQuestionIndex: 0,
       questions: [], // Qwen返回的问题
+      sentencePairs: [], // [{sentence, photo, prompt}]
     }
   },
   computed: {
@@ -218,26 +224,30 @@ export default {
     switchStage(stage) {
       this.currentStage = stage
       console.log(`已切换到 Stage ${stage}`)
-      if (stage === 2){
-        this.fetchQuestions()
-      }
+      if (stage >= 3) {
+        // 清空 Stage 3~5 的问题
+        this.questions = []
+    }
     },
     // 获取问题
     async fetchQuestions() {
-      try {
-        // 把每张照片转成 base64
-        const base64Photos = await Promise.all(
-          this.photos.map(photo => this.convertToBase64(photo.file))
-        );
+      console.log('开始获取问题...')
+      if (this.currentStage === 2) {    
+        try {
+          // 把每张照片转成 base64
+          const base64Photos = await Promise.all(
+            this.photos.map(photo => this.convertToBase64(photo.file))
+          );
 
-        const response = await axios.post('http://127.0.0.1:5000/generate-questions', {
-          photos: base64Photos,  // 发送 Base64 编码图片
-          narratives: this.userNarratives[1],  // 获取 Stage 1 的口述文本
-        });
+          const response = await axios.post('http://127.0.0.1:5000/generate-questions', {
+            photos: base64Photos,  // 发送 Base64 编码图片
+            narratives: this.userNarratives[1],  // 获取 Stage 1 的口述文本
+          });
 
-        this.questions = response.data.questions || [];
-      } catch (error) {
-        console.error("Error fetching questions:", error);
+          this.questions = response.data.questions || [];
+        } catch (error) {
+          console.error("Error fetching questions:", error);
+        }
       }
     },
     convertToBase64(file) {
@@ -324,18 +334,36 @@ export default {
       const content = this.userNarratives[stage]
 
       // ✅ 将当前Stage的内容“保存”下来
-      // （这里示范打印，后续你可以改为上传或进一步处理）
       console.log(`Stage ${stage} 的口述内容已保存：`, content)
 
-      // （可选）如果希望用户看到提示
       this.$message?.success?.(`第 ${stage} 阶段的口述内容已保存`) 
       // 或者用 alert:
       alert(`第 ${stage} 阶段的口述内容已保存`)
     },
-    generateImages() {
+    async generateImages() {
+      if (this.currentStage !== 3) {
+        alert("图像补全功能仅在 Stage 3 可用")
+        return
+      }
+      console.log('开始获取文生图prompt...')
       const narrative = this.userNarratives[2]; // 获取 Stage 2 的口述文本
       // 先调用Qwen API分句，并生成文生图的prompt，再调用Kling根据prompt和原始输入图像生成新图片
-      console.log('触发图片生成')
+      try{
+        const base64Photos = await Promise.all(
+          this.photos.map(photo => this.convertToBase64(photo.file))
+        )
+        const response = await axios.post('http://127.0.0.1:5000/generate-prompts', {
+          photos: base64Photos,
+          narrative: narrative,
+        })
+        this.sentencePairs = response.data.sentence_pairs || []
+        console.log('图文配对结果：', toRaw(this.sentencePairs))
+
+        alert("Qwen已完成分句与prompt生成")
+      } catch (error) {
+        console.error("Error generating prompts:", error)
+        alert("生成图像提示词时出错，请查看控制台")
+      }
     },
     reselectText() {
       this.highlightedTexts = []
@@ -349,13 +377,6 @@ export default {
       this.questions[index].answered = true
       if (index < this.questions.length - 1) this.currentQuestionIndex = index + 1
     },
-    // submitAnswer(index) {
-    //   if (this.questions[index].answer.trim()) {
-    //     this.questions[index].answered = true
-    //     this.questions[index].showInput = false
-    //     if (index < this.questions.length - 1) this.currentQuestionIndex = index + 1
-    //   }
-    // },
     // 处理用户回答问题
     submitAnswer(index) {
       const question = this.questions[index];
@@ -948,7 +969,7 @@ export default {
   color: #666;
 }
 
-.update-narrative-btn {
+.control-btn.primary {
   margin: 20px;
   padding: 12px;
   background: linear-gradient(135deg, #c3c9e8, #d4c5e0);
@@ -961,7 +982,7 @@ export default {
   transition: all 0.3s;
 }
 
-.update-narrative-btn:hover {
+.control-btn:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(195, 201, 232, 0.4);
 }
