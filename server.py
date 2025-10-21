@@ -64,58 +64,6 @@ def generate_questions():
         return jsonify({"error": str(e)}), 500
     
 
-# @app.route('/generate-prompts', methods=['POST'])
-# def generate_prompts():
-#     try:
-#         data = request.get_json()
-#         photos = data['photos']
-#         narratives = data['narratives']
-
-#         # Step 1: 调用Qwen进行分句和生成prompt
-#         system_prompt = f"""你是一个叙事视觉设计助手。
-#             请把用户给出的叙述文本合理分句，每句能代表一个独立的视觉场景。
-#             对于每一句话，生成一个适合文生图的中文prompt（20字左右，描述画面内容）。
-#             请以JSON数组返回，每个元素包含 "sentence" 和 "prompt"。
-#             """       
-#         prompt = f"""
-#             用户提供的叙述文本内容如下：
-#             {narratives}
-#             请结合上述内容生成符合 system_prompt 要求的 JSON 数组。
-#             """
-#         response = qwen.get_response(
-#             prompt=prompt,
-#             system_prompt=system_prompt,
-#             image_path_list=photos,
-#             model="qwen-vl-max",
-#             enable_image_input=True
-#         )
-#         print('生成的文本对：', response)
-#         result = response.json()
-
-#         # 提取Qwen输出文本（按实际返回格式调整）
-#         text_output = result["output"]["text"] if "output" in result else result.get("result", "")
-#         # 尝试解析为JSON数组
-#         try:
-#             import json
-#             qwen_sentences = json.loads(text_output)
-#         except Exception:
-#             qwen_sentences = [{"sentence": narratives, "prompt": "no prompt"}]
-
-#         # Step 2: 匹配照片
-#         sentence_pairs = []
-#         for i, item in enumerate(qwen_sentences):
-#             photo = photos[i] if i < len(photos) else None
-#             sentence_pairs.append({
-#                 "sentence": item["sentence"],
-#                 "photo": photo,
-#                 "prompt": item["prompt"] if photo is None else None
-#             })
-
-#         return jsonify({"sentence_pairs": sentence_pairs})
-
-    
-#     except Exception as e:
-#         return jsonify({"error": str(e)}), 500
 
 @app.route('/generate-prompts', methods=['POST'])
 def generate_prompts():
