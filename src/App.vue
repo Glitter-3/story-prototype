@@ -24,8 +24,6 @@
       </div>
 
       <div class="header-right">
-        <button class="save-btn">💾 保存</button>
-        <button class="export-btn">📤 导出</button>
       </div>
     </header>
 
@@ -53,11 +51,10 @@
 
             </div>
           </div>
-          <!--统一的照片展示区，Stage1~5-->
-          <div class="photo-grid">
+          <!-- 统一的照片展示区：Stage3，4 时拆分为原图 + AI 增强图 -->
+          <div v-if="currentStage !== 3 && currentStage !== 4 && currentStage !== 5" class="photo-grid">
             <div class="photo-slot" v-for="(photo, index) in photos" :key="index">
               <div class="photo-placeholder" @click="triggerFileInput(index)" v-if="currentStage === 1">
-                <!--Stage 1 显示可添加的占位符-->
                 <template v-if="photo.url">
                   <img :src="photo.url" class="photo-preview" alt="预览图片" />
                 </template>
@@ -66,8 +63,8 @@
                   <span class="add-icon">+</span>
                 </template>
               </div>
+
               <div class="photo-placeholder" v-else>
-                <!-- Stage 2~5 显示已上传的照片，不允许修改 -->
                 <template v-if="photo.url">
                   <img :src="photo.url" class="photo-preview" alt="预览图片" />
                 </template>
@@ -75,9 +72,91 @@
                   <span class="photo-number">{{ index + 1 }}</span>
                   <span class="add-icon">+</span>
                 </template>
-              </div>  
+              </div>
             </div>
           </div>
+
+          <!-- Stage3/4 专用：原图 + AI增强图 -->
+          <div v-else-if="currentStage === 3 || currentStage === 4" class="split-container">
+            <div class="split-title">🎞️ 原照片集</div>
+
+            <!-- 上半部：原图 -->
+            <div class="top-panel">
+              <div class="photo-grid">
+                <div class="photo-slot" v-for="(photo, index) in photos" :key="'orig-'+index">
+                  <div class="photo-placeholder">
+                    <template v-if="photo.url">
+                      <img :src="photo.url" class="photo-preview" alt="原始图片" />
+                    </template>
+                    <template v-else>
+                      <span class="photo-number">{{ index + 1 }}</span>
+                      <span class="add-icon">+</span>
+                    </template>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 下半部：AI 增强图 -->
+            <div class="bottom-panel">
+              <div class="split-title">🪄 AI 增强照片</div>
+              <div class="photo-grid ai-photo-grid">
+                <div class="photo-slot" v-for="(ap, idx) in aiPhotos" :key="'ai-'+idx">
+                  <div class="photo-placeholder ai-placeholder" @click="onClickAiSlot(idx)">
+                    <template v-if="ap.url">
+                      <img :src="ap.url" class="photo-preview" alt="AI增强图片" />
+                      <div class="ai-badge">AI</div>
+                    </template>
+                    <template v-else>
+                      <span class="photo-number">{{ idx + 1 }}</span>
+                      <span class="add-icon">+</span>
+                    </template>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stage5 专用：原图 + AI增强视频（只保留一个相框） -->
+          <div v-else-if="currentStage === 5" class="split-container">
+            <div class="split-title">🎞️ 原照片集</div>
+
+            <!-- 上半部：原图 -->
+            <div class="top-panel">
+              <div class="photo-grid">
+                <div class="photo-slot" v-for="(photo, index) in photos" :key="'orig-'+index">
+                  <div class="photo-placeholder">
+                    <template v-if="photo.url">
+                      <img :src="photo.url" class="photo-preview" alt="原始图片" />
+                    </template>
+                    <template v-else>
+                      <span class="photo-number">{{ index + 1 }}</span>
+                      <span class="add-icon">+</span>
+                    </template>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 下半部：AI 增强视频 -->
+            <div class="bottom-panel">
+              <div class="split-title">🎬 AI 增强视频</div>
+              <div class="video-slot">
+                <video 
+                  v-if="aiVideo.url" 
+                  :src="aiVideo.url" 
+                  controls 
+                  style="width:100%; border-radius:6px; border:1px solid #ccc;">
+                </video>
+                <div v-else class="video-placeholder" 
+                    style="display:flex; justify-content:center; align-items:center; height:100px; border:1px dashed #ccc; border-radius:6px; color:#666;">
+                  <span>AI 视频占位</span>
+                </div>
+
+              </div>
+            </div>
+          </div>
+
         </div>
 
         <!-- 可拖拽分隔条 -->
@@ -102,30 +181,22 @@
             </div>
           </div>
           
-          <!-- <div class="narrative-content" @mouseup="handleTextSelection">
-            <p>
-              第一阶段：高中时期 大约是在1995年，那时我刚上高一。因为座位靠得近，很自然地认识了
-              <span :class="{ 'highlighted': highlightedTexts.includes(0) }" @click="toggleHighlight(0)">静静和哲哲</span>，
-              我们三个成了无话不谈的好朋友。那时候的学习生活紧张又单纯，哲哲安静勤奋，经常带着我一起自习；
-              静静性格细腻，有时会因为想家而落泪，我们就在课间轮流安慰她。
-              <span :class="{ 'highlighted': highlightedTexts.includes(1) }" @click="toggleHighlight(1)">那张合影是班里同学带来一台新相机，在教室一角帮我们拍的</span>。
-              我们有些不好意思，表情都挺僵硬。现在回头看，那是我们三个人难得停下来留下的影像。
-              虽然如今大家分隔在不同城市，但还保持联系，会互相分享现在的生活近况。
-            </p>
-          </div> -->
-          <div class="narrative-content">
-            <textarea
-              v-model="userNarratives[currentStage]"
-              placeholder="请在此输入您对这阶段照片的描述、回忆或故事……"
-              rows="8"
-              class="narrative-input"
-            ></textarea>
-          </div>
+        <!-- ✅ 改为可编辑div，同时能显示蓝色旧内容 -->
+          <div
+            ref="editableNarrative"
+            class="narrative-input"
+            contenteditable="true"
+            @input="onEditableInput"
+            @keydown="onEditableKeydown"
+            :placeholder="'请在此输入您对这阶段照片的描述、回忆或故事……'"
+            style="white-space: pre-wrap; overflow-y: auto; min-height: 160px; border: 1px solid #ccc; padding: 10px; border-radius: 6px; color: black;"
+          ></div>
+
         </div>
       </section>
 
       <!-- 右侧AI助手 -->
-      <aside class="ai-assistant" v-if="currentStage !== 1">
+      <aside class="ai-assistant" v-if="currentStage !== 1 && currentStage !== 5">
         <div class="assistant-header">
           <h3>🤖 AI创作助手</h3>
           <span class="status-indicator">● 在线</span>
@@ -135,8 +206,28 @@
           <div class="progress-bar">
             <div class="progress-fill" :style="{ width: progressPercentage + '%' }"></div>
           </div>
-          <span class="progress-text">{{ answeredCount }}/{{ questions.length }} 问题已回答</span>
+          <span class="progress-text" v-if="currentStage === 4">
+            已迭代 {{ iterationCount }} 轮
+          </span>
+          <span class="progress-text" v-else>
+            {{ answeredCount }}/{{ questions.length }} 问题已回答
+          </span>
+
         </div>
+
+        <!-- Stage 4 专用：AI 建议输入区 -->
+        <div v-if="currentStage === 4" class="ai-modify-section" style="margin:10px 0; text-align:center;">
+          <label style="display:block; font-weight:600; margin-bottom:12px; text-align:center;">
+            你对当前AI修改的照片有什么建议？
+          </label>
+          <textarea
+            v-model="aiSuggestion"
+            rows="24" 
+            placeholder="请输入你的建议，例如：色调更暖、人物锐化、保留背景细节等..."
+            style="width:100%; box-sizing:border-box; padding:8px; border-radius:6px; border:1px solid #ddd; font-size:14px;"
+          ></textarea>
+        </div>
+
 
         <div class="questions-container">
           <div 
@@ -168,15 +259,24 @@
             <div v-if="question.answered && question.answer" class="answer-display">
               <p>{{ question.answer }}</p>
             </div>
+
+            
           </div>
         </div>
 
-        <!-- 替换 Stage2~5 的按钮 -->
-        <button v-if="currentStage >= 2 && currentStage <= 5" 
-                class="control-btn primary"
-                @click="fetchQuestions">
+        <!-- Stage 4 专用按钮，两个上下排列 -->
+        <div v-if="currentStage === 4" style="display:flex; flex-direction:column; gap:8px; margin-top:10px;">
+          <button class="control-btn primary" @click="continueModification">继续修改</button>
+        </div>
+
+        <!-- Stage 2, 3, 5 的开始提问按钮 -->
+        <button 
+          v-if="currentStage === 2 || currentStage === 3 || currentStage === 5" 
+          class="control-btn primary"
+          @click="fetchQuestions">
           开始提问
         </button>
+
 
       </aside>
     </div>
@@ -191,13 +291,19 @@ export default {
   data() {
     return {
       currentStage: 1, // ✅ 默认Stage 1
-      photoPanelHeight: 280,
+      photoPanelHeight: 360,
       isResizing: false,
+      aiVideo: { url: '' },  // Stage5 AI 增强视频
+      iterationCount: 1,      // Stage 4 迭代次数，初始为1
+      maxIterations: 8,       // 最大迭代轮数
       startY: 0,
       startHeight: 0,
       highlightedTexts: [],
+      aiSuggestion: '',               // Stage4 输入框绑定内容
+      modificationInProgress: false,  // 是否处于 AI 修改中（可用于按钮状态）
       selectedText: '',
       photos: [], 
+      aiPhotos: [ {}, {}, {} ], 
       uploadTargetIndex: null,
       userNarratives: {
         1: '',
@@ -213,22 +319,309 @@ export default {
   },
   computed: {
     progressPercentage() {
+      if (this.currentStage === 4) {
+        return (this.iterationCount / this.maxIterations) * 100
+      }
       return (this.answeredCount / this.questions.length) * 100
     },
     answeredCount() {
       return this.questions.filter(q => q.answered).length
     }
   },
+
   methods: {
-    // 切换阶段
-    switchStage(stage) {
-      this.currentStage = stage
-      console.log(`已切换到 Stage ${stage}`)
-      if (stage >= 3) {
-        // 清空 Stage 3~5 的问题
-        this.questions = []
-    }
+// 替换：onEditableInput
+    onEditableInput(e) {
+      const el = this.$refs.editableNarrative;
+      if (!el) return;
+
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) {
+        this.userNarratives[this.currentStage] = el.innerHTML;
+        return;
+      }
+      const range = sel.getRangeAt(0);
+
+      // 如果选区有内容，先删除选区（用户选中蓝字并直接输入的场景）
+      if (!range.collapsed) {
+        range.deleteContents();
+        // 更新 selection/range
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+
+      // 获取光标所在的元素（如果是文本节点则取父元素）
+      let node = range.startContainer;
+      const anchorEl = node.nodeType === 3 ? node.parentElement : node;
+
+      // 判断元素是否为蓝色历史段（兼容 style 或 computed）
+      const isBlueNode = (n) => {
+        if (!n) return false;
+        const inline = (n.style && n.style.color) ? n.style.color.toLowerCase() : '';
+        if (inline && inline.includes('#007bff')) return true;
+        try {
+          const comp = window.getComputedStyle(n).color;
+          if (comp === 'rgb(0, 123, 255)') return true;
+        } catch (err) {}
+        return false;
+      };
+
+      // 如果光标在蓝色段内，拆分蓝色并插入黑色占位
+      if (isBlueNode(anchorEl)) {
+        this.splitBlueSpanAtRange(anchorEl, range);
+        // splitBlueSpanAtRange 会把光标放到黑色占位里
+      }
+
+      // 保存当前 HTML（蓝色段已被正确拆分或保持不动）
+      this.userNarratives[this.currentStage] = el.innerHTML;
     },
+
+    switchStage(stage) {
+      this.currentStage = stage;
+
+      // 仅在第一次进入该 stage 且该 stage 目前为空时，带入上一阶段文本（以纯文本方式取前一阶段内容，避免重复包 span）
+      if (stage > 1 && !this.userNarratives[stage]) {
+        const prevHtml = this.userNarratives[stage - 1] || '';
+        const tmp = document.createElement('div');
+        tmp.innerHTML = prevHtml;
+        const prevText = tmp.textContent || tmp.innerText || '';
+
+        if (prevText) {
+          // 生成一个蓝色 span（历史） + 紧随一个黑色空 span（用于后续输入）
+          const blue = `<span style="color:#007BFF;">${this.escapeHtml(prevText)}</span>`;
+          const black = `<span style="color:#000000;">\u200B</span>`;
+          this.userNarratives[stage] = blue + black;
+        } else {
+          this.userNarratives[stage] = '';
+        }
+      }
+
+      // 更新编辑区 DOM，并把光标放在黑色 span（如果存在）
+      this.$nextTick(() => {
+        const editor = this.$refs.editableNarrative;
+        if (!editor) return;
+        editor.innerHTML = this.userNarratives[stage] || '';
+
+        // 确保末尾存在黑色 span，若没有创建一个
+        let blackSpan = null;
+        const spans = Array.from(editor.querySelectorAll('span'));
+        for (const s of spans.reverse()) {
+          const col = (s.style && s.style.color) ? s.style.color.toLowerCase() : window.getComputedStyle(s).color;
+          if (col && (col.includes('#000000') || col.includes('rgb(0, 0, 0)') || col.includes('0, 0, 0'))) {
+            blackSpan = s;
+            break;
+          }
+        }
+        if (!blackSpan) {
+          // append a black span with zwsp
+          const s = document.createElement('span');
+          s.style.color = '#000000';
+          s.innerHTML = '\u200B';
+          editor.appendChild(s);
+          blackSpan = s;
+        }
+
+        // 将光标放入黑色 span（末尾），便于输入并保证新输入为黑色
+        this.placeCaretInElement(blackSpan);
+      });
+
+      console.log(`已切换到 Stage ${stage}`);
+      if (stage >= 3) {
+        this.questions = [];
+      }
+    },
+    // 新增：把蓝色 span 在光标处拆成 左蓝 + 黑色插入位 + 右蓝
+    splitBlueSpanAtRange(blueSpan, range) {
+      // blueSpan 必须包含文本（如果包含复杂子节点这里做一个简单文本抽取处理）
+      const tmp = document.createElement('div');
+      tmp.appendChild(blueSpan.cloneNode(true));
+      const fullText = tmp.textContent || '';
+
+      // 通过一个 Range 计算从 blueSpan 开始到光标处的文本长度
+      const preRange = document.createRange();
+      preRange.setStart(blueSpan, 0);
+      try {
+        preRange.setEnd(range.startContainer, range.startOffset);
+      } catch (err) {
+        // 若 setEnd 失败（极少情况），退回到以文本长度分割
+        preRange.selectNodeContents(blueSpan);
+        preRange.setEnd(blueSpan, 0);
+      }
+      const leftText = preRange.toString();
+      const rightText = fullText.slice(leftText.length);
+
+      const parent = blueSpan.parentNode;
+
+      // 创建新的左蓝 span（若 leftText 为空则不插入）
+      if (leftText) {
+        const leftSpan = document.createElement('span');
+        leftSpan.style.color = '#007BFF';
+        leftSpan.textContent = leftText;
+        parent.insertBefore(leftSpan, blueSpan);
+      }
+
+      // 创建黑色插入位（带一个零宽字符，便于放置光标）
+      const blackSpan = document.createElement('span');
+      blackSpan.style.color = '#000000';
+      blackSpan.innerHTML = '\u200B'; // zero-width space
+      parent.insertBefore(blackSpan, blueSpan);
+
+      // 创建新的右蓝 span（若 rightText 为空则不插入）
+      if (rightText) {
+        const rightSpan = document.createElement('span');
+        rightSpan.style.color = '#007BFF';
+        rightSpan.textContent = rightText;
+        parent.insertBefore(rightSpan, blueSpan);
+      }
+
+      // 移除原来的 blueSpan（已被拆分）
+      parent.removeChild(blueSpan);
+
+      // 把光标放到 blackSpan 内
+      this.placeCaretInElement(blackSpan);
+    },
+
+
+    // 把光标放到元素内部（元素末端）
+    placeCaretInElement(el) {
+      if (!el) return;
+      el.focus && el.focus();
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    },
+
+    // 简单转义 HTML（用于把纯文本包进 span）
+    escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    },
+    // 判断节点是否为我们定义的“蓝色历史段”
+    isBlueNode(node) {
+      if (!node) return false;
+      if (node.nodeType !== 1) return false; // 不是元素
+      // 优先检查内联 style，再兼容 computed style rgb
+      const inline = (node.style && node.style.color) ? node.style.color.toLowerCase() : '';
+      if (inline && inline.includes('#007bff')) return true;
+      try {
+        const comp = window.getComputedStyle(node).color;
+        if (comp === 'rgb(0, 123, 255)') return true;
+      } catch (err) {}
+      return false;
+    },
+
+    // 处理删除键（Backspace / Delete），保证蓝色段可以被整段删除或在蓝字间插入的黑字可删
+    onEditableKeydown(e) {
+      const editor = this.$refs.editableNarrative;
+      if (!editor) return;
+
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+
+      // 如果存在选区（用户选中了一段），让默认行为生效，之后延迟更新保存内容
+      if (!range.collapsed) {
+        // 保存在下一tick（删除/替换后 DOM 已变）
+        setTimeout(() => {
+          this.userNarratives[this.currentStage] = editor.innerHTML;
+        }, 0);
+        return;
+      }
+
+      // helper：找到当前光标所在的元素（若在文本节点则返回父元素）
+      const getAnchorElement = (r) => {
+        let n = r.startContainer;
+        return (n.nodeType === 3 ? n.parentElement : n);
+      };
+
+      const anchorEl = getAnchorElement(range);
+
+      // ---------- Backspace 逻辑 ----------
+      if (e.key === 'Backspace') {
+        // 情况 A：如果光标在一个黑色 span（插入位）并且光标位于其开始位置，
+        // 则尝试删除前一个 sibling，如果前一个是蓝色 span，就删除它（整段删除）
+        if (anchorEl && anchorEl.nodeType === 1) {
+          // 如果是文本节点父元素且 offset===0（光标在开头）
+          const isAtStart = (() => {
+            // 若 startContainer 是文本节点，检查 startOffset
+            if (range.startContainer.nodeType === 3) {
+              return range.startOffset === 0;
+            }
+            // 否则使用 startOffset 与 childNodes 长度比较
+            return range.startOffset === 0;
+          })();
+
+          if (isAtStart) {
+            const prev = anchorEl.previousSibling;
+            if (prev && this.isBlueNode(prev)) {
+              e.preventDefault();
+              prev.parentNode.removeChild(prev);
+              // 更新 model 并把光标放到当前 anchorEl 开头
+              this.$nextTick(() => {
+                this.placeCaretInElement(anchorEl);
+                this.userNarratives[this.currentStage] = editor.innerHTML;
+              });
+              return;
+            }
+          }
+        }
+
+        // 情况 B：如果光标直接位于蓝色 span 内（比如用户把光标点在蓝字中），
+        // 我们允许在蓝字内部删除字符（默认行为）——无需阻止
+        // 但若想要在蓝字内部输入把插入部分变黑，已有 onEditableInput 会拆分
+        return; // 让默认行为继续
+      }
+
+      // ---------- Delete 键 逻辑 ----------
+      if (e.key === 'Delete') {
+        // 情况：若光标在黑色 span 末尾并且下一个 sibling 是蓝色 span -> 删除那个蓝色段
+        // 判定是否在元素末尾
+        const isAtEnd = (() => {
+          if (range.startContainer.nodeType === 3) {
+            return range.startOffset === range.startContainer.textContent.length;
+          }
+          return range.startOffset === anchorEl.childNodes.length;
+        })();
+
+        if (isAtEnd) {
+          const next = anchorEl.nextSibling;
+          if (next && this.isBlueNode(next)) {
+            e.preventDefault();
+            next.parentNode.removeChild(next);
+            this.$nextTick(() => {
+              this.placeCaretInElement(anchorEl);
+              this.userNarratives[this.currentStage] = editor.innerHTML;
+            });
+            return;
+          }
+        }
+
+        // 否则允许默认 Delete 行为（删除字符）
+        return;
+      }
+
+      // 其余按键正常处理（例如字符输入会触发 input 事件，在 onEditableInput 处理拆分/插入）
+    },
+
+    continueModification() {
+      if (this.iterationCount < this.maxIterations) {
+        this.iterationCount += 1;
+      }
+      console.log(`当前迭代轮数：${ this.iterationCount}`);
+      this.aiSuggestion = ''
+      
+      // 如果你希望每次迭代同时做一些 AI 修改逻辑，也可以在这里调用：
+      // this.applyAiModification()
+    },
+
+
     // 获取问题
     async fetchQuestions() {
       console.log('开始获取问题...')
@@ -360,60 +753,9 @@ export default {
         console.log('图文配对结果：', toRaw(this.sentencePairs))
 
         alert("Qwen已完成分句与prompt生成")
-
-        // 过滤出需要生成图像的 pairs（prompt != null）
-        const toGenerate = this.sentencePairs.map((p, i) => ({...p, __index: i}))
-                                          .filter(p => p.prompt)
-
-        if (!toGenerate.length) {
-          alert("没有需要生成的 prompt，操作结束")
-          return
-        }
-
-        // 请求后端创建任务并生成图片
-        // 我们把完整的 sentence_pairs 传给后端，由后端处理 prompt != null 的项目
-        const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
-          sentence_pairs: this.sentencePairs
-        }, { timeout: 600000 }) // 可能会比较慢，放长一些的超时（后端也需能等待）
-
-        if (genResp.data && genResp.data.results) {
-          const results = genResp.data.results
-          console.log("生成图片结果：", results)
-
-          // results 是按 index 的数组，里面每项 { index, prompt, generated_urls: ["/static/generated/xxx.jpg", ...] }
-          // 根据你的 UI 逻辑将生成图填入 photos：
-          results.forEach(res => {
-            const idx = res.index
-            const urls = res.generated_urls || []
-            if (!urls.length) return
-            // 取第一张（如果 n >1，可按需扩展）
-            const firstUrl = urls[0]
-
-            // 如果原 sentence_pair 对应的 photo 存在（也就是用原图做参考），我们找到对应前端 photos 中相同 base64 并替换
-            // 后端返回的 index 是 sentence_pairs 的 index，不一定与 photos 索引一一对应
-            const pair = this.sentencePairs[idx]
-            if (pair && pair.photo) {
-              // 找到与 pair.photo（dataURL）一致的照片槽位并替换 url
-              const slot = this.photos.findIndex(p => p.url === pair.photo || (p.file && p.url && p.url.startsWith("blob:") && p.url === pair.photo))
-              if (slot !== -1) {
-                this.photos[slot] = { file: null, url: firstUrl, name: `generated_${Date.now()}_${slot}.jpg` }
-                return
-              }
-            }
-
-            // 否则，追加到 photos 列表
-            this.photos.push({ file: null, url: firstUrl, name: `generated_${Date.now()}.jpg` })
-          })
-
-          alert("图像生成并更新完毕，已显示在照片面板")
-        } else {
-          console.error("generate-images 返回异常：", genResp.data)
-          alert("生成图片时出错，请查看控制台")
-        }
-
       } catch (error) {
         console.error("Error generating prompts:", error)
-        alert("生成图像时出错，请查看控制台")
+        alert("生成图像提示词时出错，请查看控制台")
       }
     },
     reselectText() {
