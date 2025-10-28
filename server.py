@@ -1,11 +1,192 @@
+import os
+import re
+import json
+import uuid
+import base64
+import requests
+from pathlib import Path
+from kling import ImageGenerator
+from urllib.parse import urlparse, unquote
+import string
 from flask import Flask, request, jsonify
 from qwen import QwenChat
 from flask_cors import CORS
-import json
 
 app = Flask(__name__)
 CORS(app)  # 允许跨域请求
 
+# 确保 static/generated 目录存在（Flask 默认会把 /static 映射到 ./static）
+GENERATED_DIR = Path(__file__).parent / "static" / "generated"
+GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+
+# 定义后端对外访问的 base 地址（用于返回绝对 URL）
+BACKEND_BASE = "http://127.0.0.1:5000"
+
+# helper: 把 data:image/...;base64,... 写成文件，返回文件路径
+def dataurl_to_file(dataurl, filename=None):
+    """
+    dataurl example: "data:image/jpeg;base64,/9j/4AAQ.."
+    返回写好的文件路径（字符串）
+    """
+    m = re.match(r"data:(image/\w+);base64,(.*)", dataurl, re.S)
+    if not m:
+        raise ValueError("不是合法的 data URL")
+    mime, b64 = m.groups()
+    ext = mime.split('/')[-1]
+    if not filename:
+        filename = f"{uuid.uuid4().hex}.{ext}"
+    out_path = GENERATED_DIR / filename
+    with open(out_path, "wb") as f:
+        f.write(base64.b64decode(b64))
+    return str(out_path)
+
+# helper: 下载远程url到 static/generated 并返回本地相对路径（供前端访问）
+def sanitize_filename_from_url(url):
+    """
+    从 URL 解析出一个适合作为本地文件名的 basename（移除 query，保留扩展）
+    """
+    parsed = urlparse(url)
+    # 取 path 的最后一段
+    base = os.path.basename(parsed.path)
+    base = unquote(base)  # 解码 %20 等
+    if not base:
+        base = uuid.uuid4().hex
+    # 仅保留允许字符，防止 windows 无效字符
+    valid_chars = "-_.() %s%s" % (string.ascii_letters, string.digits)
+    cleaned = ''.join(c for c in base if c in valid_chars)
+    if not os.path.splitext(cleaned)[1]:
+        # 如果没扩展名，默认用 .jpg
+        cleaned = cleaned + ".jpg"
+    # 防止名字过长
+    if len(cleaned) > 200:
+        cleaned = cleaned[:200]
+    return cleaned
+
+def download_to_generated(url, filename=None):
+    try:
+        if not filename:
+            filename = sanitize_filename_from_url(url)
+        out_path = GENERATED_DIR / filename
+        # 使用 stream=True 分块写入，避免大文件一次性占内存
+        with requests.get(url, stream=True, timeout=30) as r:
+            r.raise_for_status()
+            with open(out_path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+        # 返回绝对 URL，便于前端直接访问
+        return f"{BACKEND_BASE}/static/generated/{out_path.name}"
+    except Exception as e:
+        print("下载失败:", e)
+        return None
+
+# 新增路由：/generate-images
+@app.route('/generate-images', methods=['POST'])
+def generate_images():
+    """
+    接收前端传来的 sentence_pairs（同你前端控制台输出结构），
+    对 prompt != null 的项逐条调用 kling ImageGenerator，等待结果，
+    把返回的图片下载到 ./static/generated 并返回本地 URL 列表。
+    请求体示例:
+    {
+      "sentence_pairs": [{ "photo": "...dataurl或null...", "sentence": "...", "prompt": "..." }, ...]
+    }
+    """
+    try:
+        payload = request.get_json()
+        pairs = payload.get("sentence_pairs", [])
+        if not pairs:
+            return jsonify({"error": "no sentence_pairs"}), 400
+
+        # 初始化 ImageGenerator
+        ig = ImageGenerator()  # 使用 kling.py 中的类；请确保 ACCESS/SECRET 在 kling.py 已设置
+
+        # 构造 Authorization header（kling 的示例中用 jwt）
+        token = ig._encode_jwt_token()  # 直接利用类方法生成 token
+        AUTHORIZATION = f"Bearer {token}"
+        HEADERS = {"Content-Type": "application/json", "Authorization": AUTHORIZATION}
+
+        results = []  # 收集每个 prompt 的返回信息
+
+        for idx, item in enumerate(pairs):
+            prompt = item.get("prompt")
+            if not prompt:
+                # 跳过没有 prompt 的项（front-end 不需要生成）
+                results.append({"index": idx, "prompt": None, "generated_urls": [], "note": "no prompt"})
+                continue
+
+            # 如果该项自带 photo（data url），写成临时文件并传给 kling
+            local_input_path = None
+            photo = item.get("photo")
+            if photo and isinstance(photo, str) and photo.startswith("data:"):
+                try:
+                    local_input_path = dataurl_to_file(photo, filename=f"input_{uuid.uuid4().hex}.jpg")
+                except Exception as e:
+                    print("写入 dataurl 失败:", e)
+                    local_input_path = None
+
+            # 调用 ImageGenerator.run（同步轮询）
+            try:
+                task_result = ig.run(
+                    headers=HEADERS,
+                    prompt=prompt,
+                    image_path=local_input_path if local_input_path else "",
+                    model_name="kling-v2",
+                    n=1,
+                    aspect_ratio="3:4",
+                    max_wait=300,
+                    interval=5
+                )
+            except Exception as e:
+                print("调用 kling 失败:", e)
+                results.append({"index": idx, "prompt": prompt, "generated_urls": [], "error": str(e)})
+                continue
+
+            # 从 task_result 中提取图片 url（格式依赖 kling 返回的结构）
+            generated_urls = []
+            try:
+                data = task_result.get("data", {})
+                # 适配你 kling.py get_task_result 中返回的结构
+                imgs = data.get("task_result", {}).get("images", []) or []
+                for im in imgs:
+                    # im 里通常包含 'url' 字段（远程可访问）
+                    remote_url = im.get("url")
+                    if not remote_url:
+                        # 如果返回的是 base64 字符串字段（示例），可按需写入文件：
+                        b64 = im.get("b64") or im.get("base64")
+                        if b64:
+                            # 写成文件并返回本地 url
+                            try:
+                                fn = f"{uuid.uuid4().hex}.jpg"
+                                out_path = GENERATED_DIR / fn
+                                with open(out_path, "wb") as f:
+                                    f.write(base64.b64decode(b64))
+                                generated_urls.append(f"{BACKEND_BASE}/static/generated/{out_path.name}")
+                            except Exception as e:
+                                print("写入 base64 图片失败:", e)
+                        continue
+
+                    # 先尝试下载到本地静态目录（使用 safe filename）
+                    local_url = download_to_generated(remote_url)
+                    if local_url:
+                        generated_urls.append(local_url)
+                    else:
+                        # 如果下载失败，仍然把远程 URL 返回给前端（前端可直接使用远端URL）
+                        generated_urls.append(remote_url)
+
+            except Exception as e:
+                print("解析生成结果失败:", e)
+
+            results.append({"index": idx, "prompt": prompt, "generated_urls": generated_urls})
+        # 返回一个数组，前端按 index 对应处理
+        return jsonify({"results": results})
+
+    except Exception as e:
+        print("generate-images 异常:", e)
+        return jsonify({"error": str(e)}), 500
+
+
+# Qwen API Key 和 Base URL 配置
 API_KEY = "sk-fbdc82229399417892a94c001b5ea873" # 替换成自己的key
 BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
@@ -178,72 +359,11 @@ def generate_prompts():
 
         return jsonify({"sentence_pairs": sentence_pairs})
 
-        # # Step 2: 对每张照片寻找语义最接近的句子（photo→sentence）
-        # matched_indices = set()  # 记录已被匹配的句子索引
-        # sentence_pairs = []
-
-        # for photo_idx, photo in enumerate(photos):
-        #     best_match = {"index": None, "score": 0}
-
-        #     for idx, item in enumerate(qwen_sentences):
-        #         if idx in matched_indices:
-        #             continue
-
-        #         sentence = item["sentence"]
-        #         match_prompt = f"""
-        #         你是一个图像语义理解助手。
-        #         用户提供了一张图片和一句文字描述。
-        #         请你判断这张图片与文字的语义相关程度（0~100分）。
-        #         输出格式严格为：{{"score": 数值}}
-        #         叙述内容："{sentence}"
-        #         """
-
-        #         match_response = qwen.get_response(
-        #             prompt=match_prompt,
-        #             system_prompt="仅根据语义相关性输出一个数值评分。",
-        #             image_path_list=[photo],
-        #             model="qwen-vl-max",
-        #             enable_image_input=True
-        #         )
-
-        #         try:
-        #             score = json.loads(str(match_response)).get("score", 0)
-        #         except:
-        #             score = 0
-
-        #         if score > best_match["score"]:
-        #             best_match = {"index": idx, "score": score}
-
-        #     # 如果最高分超过阈值，则该图片与该句匹配
-        #     if best_match["score"] > 60 and best_match["index"] is not None:
-        #         matched_idx = best_match["index"]
-        #         matched_indices.add(matched_idx)
-        #         sentence_pairs.append({
-        #             "photo": photo,
-        #             "sentence": qwen_sentences[matched_idx]["sentence"],
-        #             "prompt": None
-        #         })
-        #     else:
-        #         # 没有找到合适的句子
-        #         sentence_pairs.append({
-        #             "photo": photo,
-        #             "sentence": None,
-        #             "prompt": None
-        #         })
-
-        # # Step 3: 把剩余未匹配的句子作为“需生成图”的 prompt
-        # for idx, item in enumerate(qwen_sentences):
-        #     if idx not in matched_indices:
-        #         sentence_pairs.append({
-        #             "photo": None,
-        #             "sentence": item["sentence"],
-        #             "prompt": item["prompt"]
-        #         })
-
-        # return jsonify({"sentence_pairs": sentence_pairs})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
 
 
 

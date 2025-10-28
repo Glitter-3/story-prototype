@@ -360,9 +360,60 @@ export default {
         console.log('图文配对结果：', toRaw(this.sentencePairs))
 
         alert("Qwen已完成分句与prompt生成")
+
+        // 过滤出需要生成图像的 pairs（prompt != null）
+        const toGenerate = this.sentencePairs.map((p, i) => ({...p, __index: i}))
+                                          .filter(p => p.prompt)
+
+        if (!toGenerate.length) {
+          alert("没有需要生成的 prompt，操作结束")
+          return
+        }
+
+        // 请求后端创建任务并生成图片
+        // 我们把完整的 sentence_pairs 传给后端，由后端处理 prompt != null 的项目
+        const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
+          sentence_pairs: this.sentencePairs
+        }, { timeout: 600000 }) // 可能会比较慢，放长一些的超时（后端也需能等待）
+
+        if (genResp.data && genResp.data.results) {
+          const results = genResp.data.results
+          console.log("生成图片结果：", results)
+
+          // results 是按 index 的数组，里面每项 { index, prompt, generated_urls: ["/static/generated/xxx.jpg", ...] }
+          // 根据你的 UI 逻辑将生成图填入 photos：
+          results.forEach(res => {
+            const idx = res.index
+            const urls = res.generated_urls || []
+            if (!urls.length) return
+            // 取第一张（如果 n >1，可按需扩展）
+            const firstUrl = urls[0]
+
+            // 如果原 sentence_pair 对应的 photo 存在（也就是用原图做参考），我们找到对应前端 photos 中相同 base64 并替换
+            // 后端返回的 index 是 sentence_pairs 的 index，不一定与 photos 索引一一对应
+            const pair = this.sentencePairs[idx]
+            if (pair && pair.photo) {
+              // 找到与 pair.photo（dataURL）一致的照片槽位并替换 url
+              const slot = this.photos.findIndex(p => p.url === pair.photo || (p.file && p.url && p.url.startsWith("blob:") && p.url === pair.photo))
+              if (slot !== -1) {
+                this.photos[slot] = { file: null, url: firstUrl, name: `generated_${Date.now()}_${slot}.jpg` }
+                return
+              }
+            }
+
+            // 否则，追加到 photos 列表
+            this.photos.push({ file: null, url: firstUrl, name: `generated_${Date.now()}.jpg` })
+          })
+
+          alert("图像生成并更新完毕，已显示在照片面板")
+        } else {
+          console.error("generate-images 返回异常：", genResp.data)
+          alert("生成图片时出错，请查看控制台")
+        }
+
       } catch (error) {
         console.error("Error generating prompts:", error)
-        alert("生成图像提示词时出错，请查看控制台")
+        alert("生成图像时出错，请查看控制台")
       }
     },
     reselectText() {
