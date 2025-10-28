@@ -105,6 +105,10 @@
                   <div class="photo-placeholder ai-placeholder" @click="onClickAiSlot(idx)">
                     <template v-if="ap.url">
                       <img :src="ap.url" class="photo-preview" alt="AI增强图片" />
+<<<<<<< HEAD
+=======
+                      <div class="ai-badge">AI</div>
+>>>>>>> 969c4501c848a58fe146ec0e018cbf14756ba3a1
                     </template>
                     <template v-else>
                       <span class="photo-number">{{ idx + 1 }}</span>
