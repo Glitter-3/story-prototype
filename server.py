@@ -64,23 +64,6 @@ def sanitize_filename_from_url(url):
         cleaned = cleaned[:200]
     return cleaned
 
-# def download_to_generated(url, filename=None):
-#     try:
-#         if not filename:
-#             filename = sanitize_filename_from_url(url)
-#         out_path = GENERATED_DIR / filename
-#         # 使用 stream=True 分块写入，避免大文件一次性占内存
-#         with requests.get(url, stream=True, timeout=30) as r:
-#             r.raise_for_status()
-#             with open(out_path, "wb") as f:
-#                 for chunk in r.iter_content(chunk_size=8192):
-#                     if chunk:
-#                         f.write(chunk)
-#         # 返回绝对 URL，便于前端直接访问
-#         return f"{BACKEND_BASE}/static/generated/{out_path.name}"
-#     except Exception as e:
-#         print("下载失败:", e)
-#         return None
 
 # 修改后的 download_to_generated：下载远程 URL 到 static/generated，并用时间戳+uuid命名保存
 def download_to_generated(url, filename=None):
