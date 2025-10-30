@@ -105,10 +105,6 @@
                   <div class="photo-placeholder ai-placeholder" @click="onClickAiSlot(idx)">
                     <template v-if="ap.url">
                       <img :src="ap.url" class="photo-preview" alt="AI增强图片" />
-<<<<<<< HEAD
-=======
-                      <div class="ai-badge">AI</div>
->>>>>>> 969c4501c848a58fe146ec0e018cbf14756ba3a1
                     </template>
                     <template v-else>
                       <span class="photo-number">{{ idx + 1 }}</span>
@@ -205,17 +201,34 @@
           <span class="status-indicator">● 在线</span>
         </div>
 
-        <div class="progress-section">
+        <div class="progress-section" v-if="currentStage === 2 || currentStage === 4">
           <div class="progress-bar">
             <div class="progress-fill" :style="{ width: progressPercentage + '%' }"></div>
           </div>
           <span class="progress-text" v-if="currentStage === 4">
             已迭代 {{ iterationCount }} 轮
           </span>
-          <span class="progress-text" v-else>
+          <span class="progress-text" v-if="currentStage === 2">
             {{ answeredCount }}/{{ questions.length }} 问题已回答
           </span>
 
+        </div>
+
+        <!-- Stage3 专用：显示 Qwen 整合结果（只读） -->
+        <div v-if="currentStage === 3" class="assistant-integration-result" style="margin:10px 0; padding:10px; border-radius:6px; border:1px dashed #d0d7de; background:#fafafa;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <strong>🧾 AI 整合结果（仅供参考）</strong>
+            <div style="font-size:12px; color:#666;">
+              <span v-if="integrating">整合中...</span>
+            </div>
+          </div>
+
+          <div v-if="assistantIntegratedText" style="white-space:pre-wrap; max-height:220px; overflow:auto; color:#222; line-height:1.6;">
+            {{ assistantIntegratedText }}
+          </div>
+          <div v-else style="color:#888; font-size:13px;">
+            （尚无整合结果，点击下方「整合文本」或在 Stage 2 回答问题后再试）
+          </div>
         </div>
 
         <!-- Stage 4 专用：AI 建议输入区 -->
@@ -232,7 +245,7 @@
         </div>
 
 
-        <div class="questions-container">
+        <div class="questions-container" v-if="currentStage === 2">
           <div 
             v-for="(question, index) in questions" 
             :key="index"
@@ -272,12 +285,21 @@
           <button class="control-btn primary" @click="continueModification">继续修改</button>
         </div>
 
-        <!-- Stage 2, 3, 5 的开始提问按钮 -->
+        <!-- Stage 2 的开始提问按钮 -->
         <button 
-          v-if="currentStage === 2 || currentStage === 3 || currentStage === 5" 
+          v-if="currentStage === 2" 
           class="control-btn primary"
           @click="fetchQuestions">
           开始提问
+        </button>
+
+        <!-- Stage3：整合文本（把 Stage2 的问答 + Stage2 的口述合并成连贯叙述，输出到 Stage3 编辑器） -->
+        <button 
+          v-if="currentStage === 3" 
+          class="control-btn primary"
+          :disabled="integrating"
+          @click="integrateText">
+          {{ integrating ? '整合中...' : '整合文本' }}
         </button>
 
 
@@ -305,8 +327,11 @@ export default {
       aiSuggestion: '',               // Stage4 输入框绑定内容
       modificationInProgress: false,  // 是否处于 AI 修改中（可用于按钮状态）
       selectedText: '',
+      integrating: false, // 整合文本状态
+      assistantIntegratedText: '', // AI助手整合后的文本,只读
       photos: [], 
-      aiPhotos: [ {}, {}, {} ], 
+      aiPhotos: [], 
+      allPhotos: [],
       uploadTargetIndex: null,
       userNarratives: {
         1: '',
@@ -429,9 +454,6 @@ export default {
       });
 
       console.log(`已切换到 Stage ${stage}`);
-      if (stage >= 3) {
-        this.questions = [];
-      }
     },
     // 新增：把蓝色 span 在光标处拆成 左蓝 + 黑色插入位 + 右蓝
     splitBlueSpanAtRange(blueSpan, range) {
@@ -736,122 +758,171 @@ export default {
       // 或者用 alert:
       alert(`第 ${stage} 阶段的口述内容已保存`)
     },
+    async integrateText() {
+      if (this.currentStage !== 3) {
+        alert("整合文本仅在 Stage 3 可用");
+        return;
+      }
+
+      // 使用 Stage2 的口述和 Stage2 的已回答问答对作为输入
+      const narrative = this.userNarratives[2] || '';
+      const qa_pairs = (this.questions || [])
+        .filter(q => q.answered && q.answer && q.answer.trim())
+        .map(q => ({ question: q.text, answer: q.answer.trim() }));
+
+      if (!narrative && qa_pairs.length === 0) {
+        alert("没有可供整合的口述或问答，请先在 Stage2 完成口述与回答。");
+        return;
+      }
+ 
+      // Debug 日志，便于后端看到我们真正发了什么
+      console.log("准备发往 /integrate-text 的 payload:", { narrative, qa_pairs });
+
+      try {
+        this.integrating = true;
+        this.assistantIntegratedText = ''; // 清空旧结果
+
+        const resp = await axios.post('http://127.0.0.1:5000/integrate-text', {
+          narrative,
+          qa_pairs,
+          options: { output_format: 'text' }
+        }, { timeout: 120000 });
+
+        if (resp.data && resp.data.integrated_text) {
+          // **关键**：只把结果写进 assistantIntegratedText，不修改 userNarratives[3]
+          this.assistantIntegratedText = String(resp.data.integrated_text).trim();
+          // 给用户提示
+          this.$message?.success?.("整合完成，已在 AI 面板显示（只读）");
+        } else {
+          console.error("integrate-text 返回结构异常：", resp.data);
+          alert("整合失败，请查看后端日志");
+        }
+
+      } catch (err) {
+        console.error("整合文本错误：", err);
+        alert("整合文本时出错，请查看控制台或后端日志");
+      } finally {
+        this.integrating = false;
+      }
+    },
+
     async generateImages() {
       if (this.currentStage !== 3) {
-        alert("图像补全功能仅在 Stage 3 可用")
-        return
+        alert("图像补全功能仅在 Stage 3 可用");
+        return;
       }
-      console.log('开始获取文生图prompt...')
-      const narrative = this.userNarratives[2]; // 获取 Stage 2 的口述文本
+      console.log('开始获取文生图prompt...');
+      const narrative = this.assistantIntegratedText; // 获取 AI 整合之后的叙述性文本
       try {
         const base64Photos = await Promise.all(
           this.photos.map(photo => this.convertToBase64(photo.file))
-        )
+        );
         const response = await axios.post('http://127.0.0.1:5000/generate-prompts', {
           photos: base64Photos,
           narrative: narrative,
-        })
-        this.sentencePairs = response.data.sentence_pairs || []
-        console.log('图文配对结果：', toRaw(this.sentencePairs))
+        });
 
-        alert("Qwen已完成分句与prompt生成")
+        this.sentencePairs = response.data.sentence_pairs || [];
+        console.log('图文配对结果：', toRaw(this.sentencePairs));
+
+        // 按照 index 排序
+        this.sentencePairs.sort((a, b) => a.index - b.index);
+
+        alert("Qwen已完成分句与prompt生成");
 
         const toGenerate = this.sentencePairs.map((p, i) => ({ ...p, __index: i }))
-                                  .filter(p => p.prompt)
+                                        .filter(p => p.prompt);
 
         if (!toGenerate.length) {
-          alert("没有需要生成的 prompt，操作结束")
-          return
+          alert("没有需要生成的 prompt，操作结束");
+          return;
         }
 
-        // 调用后端生成图片（后端会下载并返回绝对 URL 或远端 URL）
         const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
           sentence_pairs: this.sentencePairs
-        }, { timeout: 600000 })
+        }, { timeout: 600000 });
 
         if (!(genResp.data && genResp.data.results)) {
-          console.error("generate-images 返回异常：", genResp.data)
-          alert("生成图片时出错，请查看控制台")
-          return
+          console.error("generate-images 返回异常：", genResp.data);
+          alert("生成图片时出错，请查看控制台");
+          return;
         }
 
-        const results = genResp.data.results
-        console.log("生成图片结果：", results)
+        const results = genResp.data.results;
+        console.log("生成图片结果：", results);
 
-        // 后端 base（若后端返回的是相对路径 /static/... 则拼接）
-        const BACKEND_BASE = "http://127.0.0.1:5000"
+        const BACKEND_BASE = "http://127.0.0.1:5000";
 
-        // 保证 aiPhotos 至少存在（如果你期望固定槽位，可以预先创建）
-        if (!Array.isArray(this.aiPhotos)) this.aiPhotos = []
+        if (!Array.isArray(this.aiPhotos)) this.aiPhotos = [];
 
-        // 小工具：安全设置 aiPhotos 某索引（兼容 Vue2/3 响应式）
         const setAiPhoto = (index, obj) => {
           if (typeof this.$set === 'function') {
-            this.$set(this.aiPhotos, index, obj)
+            this.$set(this.aiPhotos, index, obj);
           } else {
-            // Vue3：直接替换并触发视图更新
-            this.aiPhotos[index] = obj
-            this.aiPhotos = this.aiPhotos.slice()
+            this.aiPhotos[index] = obj;
+            this.aiPhotos = this.aiPhotos.slice();
           }
-        }
+        };
 
-        // 处理每个结果：把图放到 aiPhotos
+        // 1. 将原始照片与 AI 生成的照片配对
         results.forEach(res => {
-          const idx = res.index
-          const urls = res.generated_urls || []
-          if (!urls.length) return
-          // 取第一张
-          let firstUrl = urls[0]
+          const idx = res.index;
+          const urls = res.generated_urls || [];
+          if (!urls.length) return;
+          let firstUrl = urls[0];
 
-          // 兼容：如果是相对路径，拼接后端 base
           if (firstUrl.startsWith("/")) {
-            firstUrl = BACKEND_BASE + firstUrl
+            firstUrl = BACKEND_BASE + firstUrl;
           } else if (!firstUrl.startsWith("http://") && !firstUrl.startsWith("https://")) {
-            firstUrl = BACKEND_BASE + "/static/generated/" + firstUrl
+            firstUrl = BACKEND_BASE + "/static/generated/" + firstUrl;
           }
 
-          const pair = this.sentencePairs[idx]
+          const pair = this.sentencePairs[idx];
 
-          // 1) 尝试按 pair.photo 映射到 photos 的同索引，然后把 ai 图放到 aiPhotos 的同索引
-          let targetAiIndex = -1
+          let targetAiIndex = -1;
           if (pair && pair.photo) {
-            // 优先：如果 sentence_pairs 中对应索引 idx 与 photos 索引有意义（通常 idx < photos.length）
             if (idx < this.photos.length) {
-              targetAiIndex = idx
+              targetAiIndex = idx;
             } else {
-              // 其次：尝试精确匹配 dataURL（极少命中）
-              const photoSlot = this.photos.findIndex(p => p.url === pair.photo)
-              if (photoSlot !== -1) targetAiIndex = photoSlot
+              const photoSlot = this.photos.findIndex(p => p.url === pair.photo);
+              if (photoSlot !== -1) targetAiIndex = photoSlot;
             }
           }
 
-          // 2) 如果没找到对应索引，找第一个空 ai 槽
           if (targetAiIndex === -1) {
-            const emptyIndex = this.aiPhotos.findIndex(a => !a.url)
-            if (emptyIndex !== -1) targetAiIndex = emptyIndex
+            const emptyIndex = this.aiPhotos.findIndex(a => !a.url);
+            if (emptyIndex !== -1) targetAiIndex = emptyIndex;
           }
 
-          // 3) 若仍然没找到，则追加一个新槽
           if (targetAiIndex === -1) {
-            targetAiIndex = this.aiPhotos.length
-            this.aiPhotos.push({}) // 先占位
+            targetAiIndex = this.aiPhotos.length;
+            this.aiPhotos.push({});
           }
 
-          // 写入 aiPhotos（包含一些元数据）
+          // 2. 将生成的图片插入到 allPhotos 中
           const aiObj = {
             file: null,
             url: firstUrl,
             name: `ai_generated_${Date.now()}_${targetAiIndex}.jpg`,
             prompt: res.prompt || pair?.prompt || null,
             origin_pair_index: idx
-          }
-          setAiPhoto(targetAiIndex, aiObj)
-        })
+          };
 
-        alert("图像生成并更新完毕，已显示在 AI 增强照片区")
+          // 插入到 allPhotos
+          this.allPhotos.push({
+            ...this.photos[targetAiIndex] || {}, // 可能是原始照片
+            aiGenerated: aiObj,
+            index: idx
+          });
+
+          // 更新 aiPhotos
+          setAiPhoto(targetAiIndex, aiObj);
+        });
+
+        alert("图像生成并更新完毕，已显示在 AI 增强照片区");
       } catch (error) {
-        console.error("Error generating prompts or images:", error)
-        alert("生成图像时出错，请查看控制台")
+        console.error("Error generating prompts or images:", error);
+        alert("生成图像时出错，请查看控制台");
       }
     },
     reselectText() {
