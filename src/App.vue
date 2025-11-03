@@ -90,9 +90,10 @@
             <div class="bottom-panel">
               <div class="split-title">🪄 AI 增强照片</div>
               <div class="photo-grid ai-photo-grid">
-                <div class="photo-slot" v-for="(ap, idx) in aiPhotos" :key="'ai-'+idx">
+                <div class="photo-slot-ai" v-for="(ap, idx) in aiPhotos" :key="'ai-'+idx">
                   <div class="photo-placeholder ai-placeholder" @click="onClickAiSlot(idx)">
                     <span class="ai-photo-label">{{ getLetterIndex(idx) }}</span>
+                    <span v-if="ap.iterationLabel" class="ai-photo-iter-label">{{ ap.iterationLabel }}</span>
                     <template v-if="ap.url">
                       <img :src="ap.url" class="photo-preview" alt="AI增强图片" />
                     </template>
@@ -101,6 +102,13 @@
                       <span class="add-icon">+</span>
                     </template>
                   </div>
+                  <button 
+                    v-if="currentStage === 4" 
+                    class="edit-photo-btn" 
+                    @click="openSuggestionModal(idx)"
+                    :disabled="iterationStopped || iterationCount > maxIterations">
+                    ✏️ 建议
+                  </button>
                 </div>
               </div>
             </div>
@@ -160,8 +168,7 @@
               <button class="control-btn" @click="reselectText">🔄 重新口述</button>
 
               <button v-if="currentStage === 3" class="control-btn" @click="generateImages">图像补全</button>
-              <button v-if="currentStage === 4" class="control-btn" @click="updateImagesWithSuggestion" :disabled="iterationStopped || iterationCount > maxIterations">初次图像更新</button>
-            </div>
+              </div>
           </div>
           
         <div
@@ -204,7 +211,16 @@
         >
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-shrink: 0;">
             <strong>🧾 my photo story</strong>
-            <div style="font-size:12px; color:#666;">
+            <button 
+              v-if="currentStage === 4"
+              class="control-btn"
+              @click="generateNewImagesFromNarrative"
+              :disabled="iterationStopped || iterationCount > maxIterations || !assistantUpdatedText"
+              title="根据新的叙事文本（紫色部分）生成新图片"
+              style="padding: 4px 8px; font-size: 12px;">
+              新一轮图像更新
+            </button>
+            <div v-else style="font-size:12px; color:#666;">
               <span v-if="integrating">整合中...</span>
               <span v-if="isUpdatingText">文本更新中...</span>
             </div>
@@ -228,13 +244,7 @@
           </div>
         </div>
 
-        <div v-if="currentStage === 4" class="ai-modify-section" style="margin:10px 0; text-align:center; padding: 0 20px;"> <label style="display:block; font-weight:600; margin-bottom:12px; text-align:left;"> 对AI增强照片的建议
-          </label>
-          <textarea
-            v-model="aiSuggestion"
-            rows="4" :placeholder="'例如：照片a色调暖一些；照片b人物锐化...'" style="width:100%; box-sizing:border-box; padding:8px; border-radius:6px; border:1px solid #ddd; font-size:14px; margin-bottom: 10px;" :disabled="iterationStopped || iterationCount > maxIterations"
-          ></textarea>
-          
+        <div v-if="currentStage === 4" class="ai-modify-section" style="margin:10px 0; text-align:center; padding: 0 20px;"> 
           <button 
             class="control-btn" 
             @click="fetchStage4Questions" 
@@ -316,13 +326,6 @@
 
         <div v-if="currentStage === 4" style="display:flex; flex-direction:column; gap:8px; margin: 0 20px 20px 20px;">
           <button 
-            class="control-btn primary" 
-            @click="continueModification"
-            :disabled="iterationStopped || iterationCount > maxIterations"
-            style="margin: 0; width: 100%;" >
-            {{ (iterationCount > maxIterations) ? '已达最大迭代' : '新一轮图像更新' }} </button>
-            
-          <button 
             class="control-btn" 
             @click="stopIteration" 
             style="margin: 0; background: #f5f5f5; width: 100%;" :disabled="iterationStopped || iterationCount > maxIterations"
@@ -339,12 +342,28 @@
         </button>
 
         <button 
-          v-if="currentStage === 3 || (currentStage === 4 && stage4Questions.length > 0)" class="control-btn primary"
+          v-if="currentStage === 3 || (currentStage === 4 && stage4Questions.length > 0 && answeredCount > 0)" class="control-btn primary"
           :disabled="integrating || isUpdatingText || iterationStopped || iterationCount > maxIterations"
           @click="currentStage === 3 ? integrateText() : updateText()">
-          {{ integrating ? '整合中...' : (isUpdatingText ? '更新中...' : (currentStage === 3 ? '整合文本' : '文本更新')) }}
+          {{ integrating ? '整合中...' : (isUpdatingText ? '更新中...' : (currentStage === 3 ? '整合文本' : '整合文本')) }}
         </button>
-
+        
+    <div v-if="showSuggestionModal" class="suggestion-modal-backdrop">
+      <div class="suggestion-modal">
+        <h3>对照片 {{ getLetterIndex(suggestionForPhotoIndex) }} 的建议</h3>
+        <textarea
+          v-model="currentSuggestionText"
+          rows="5"
+          placeholder="请输入你对这张照片的具体建议，例如：色调更暖、人物锐化..."
+        ></textarea>
+        <div class="modal-actions">
+          <button class="control-btn" @click="showSuggestionModal = false">取消</button>
+          <button class="control-btn primary" @click="submitIndividualPhotoUpdate" :disabled="!currentSuggestionText.trim() || isUpdatingPhoto">
+            {{ isUpdatingPhoto ? '更新中...' : '立即更新' }}
+          </button>
+        </div>
+      </div>
+    </div>
 
       </aside>
     </div>
@@ -401,6 +420,12 @@ export default {
       
       // --- ✅ [新增] Req 2 迭代 ---
       iterationStopped: false,
+      
+      // --- ✅ [新增] Req 1 模态框 ---
+      showSuggestionModal: false,
+      suggestionForPhotoIndex: null,
+      currentSuggestionText: '',
+      isUpdatingPhoto: false, // 单张照片更新 loading
     }
   },
   computed: {
@@ -726,37 +751,8 @@ export default {
       // 其余按键正常处理（例如字符输入会触发 input 事件，在 onEditableInput 处理拆分/插入）
     },
 
-    // ✅ [修改] S4 迭代逻辑
-    async continueModification() {
-      if (this.iterationCount >= this.maxIterations) { // ✅ [修改] 检查
-        alert("已达到最大迭代次数！");
-        this.iterationStopped = true; // 自动终止
-        return;
-      }
-        
-      // 1. ✅ [修改] 根据“更新后”的叙事文本，生成“新一轮”的 AI 图像
-      console.log("continueModification: 正在根据更新后的文本生成新版图片...");
-      await this.generateImagesFromUpdatedNarrative(); // 等待图片生成完毕
-      
-      // 2. 增加迭代次数
-      this.iterationCount += 1;
-      
-      // 3. 将上一轮的“紫色更新” (UpdatedText) 合并到“黑色基础” (IntegratedText)
-      this.assistantIntegratedText = (this.assistantIntegratedText + '\n' + this.assistantUpdatedText).trim();
-
-      // 4. 清空上一轮的 Stage 4 状态，准备新一轮
-      this.assistantUpdatedText = '';
-      this.aiSuggestion = '';
-      this.stage4Questions = [];
-      this.currentQuestionIndex = 0;
-
-      console.log(`开始第 ${ this.iterationCount} 轮迭代`);
-
-      if (this.iterationCount > this.maxIterations) {
-        console.log("已完成最后一轮迭代，自动终止。");
-        this.iterationStopped = true;
-      }
-    },
+    // ✅ [废弃] S4 迭代逻辑 (逻辑已移入 generateNewImagesFromNarrative)
+    // async continueModification() { ... }
 
 
     // 获取问题
@@ -1227,19 +1223,24 @@ export default {
       }
     },
     
-    // ✅ (新增 Stage 4) 图像更新 (根据 S3 逻辑，用于 continueModification)
-    async generateImagesFromUpdatedNarrative() {
+    // ✅ [修改] 图像更新 (根据 S3 逻辑，用于 "新一轮图像更新")
+    async generateNewImagesFromNarrative() {
+      if (this.iterationCount > this.maxIterations) { // ✅ [修改] 检查
+        alert("已达到最大迭代次数！");
+        this.iterationStopped = true; // 自动终止
+        return;
+      }
+      
       console.log('S4: 开始根据更新后的叙事文本生成新图片...');
       
       // ✅ 关键：Stage 4 使用合并后的完整叙事
       const narrative = (this.assistantIntegratedText + '\n' + this.assistantUpdatedText).trim(); 
       
-      if (!narrative) {
-        alert("AI 叙事为空，无法生成新图片");
+      if (!narrative || !this.assistantUpdatedText) { // ✅ 必须有新文本
+        alert("AI 叙事没有更新，请先回答问题并[整合文本]");
         return;
       }
       
-      // (其余逻辑与 generateImages 基本相同)
       try {
         const base64Photos = await Promise.all(
           this.photos.map(photo => this.convertToBase64(photo.file))
@@ -1249,187 +1250,164 @@ export default {
           narrative: narrative, // 使用合并后的 narrative
         });
 
-        this.sentencePairs = response.data.sentence_pairs || [];
-        console.log('S4 图文配对结果：', toRaw(this.sentencePairs));
+        let newSentencePairs = response.data.sentence_pairs || [];
+        console.log('S4 图文配对结果：', toRaw(newSentencePairs));
 
-        this.sentencePairs.sort((a, b) => a.index - b.index);
-        // alert("S4: Qwen已完成分句与prompt生成"); // 暂时注释掉 alert
-
-        const toGenerate = this.sentencePairs.map((p, i) => ({ ...p, __index: i }))
-                                        .filter(p => p.prompt);
-        if (!toGenerate.length) {
-          console.log("S4: 没有需要生成的 new prompt，跳过");
-          return;
-        }
-
-        // ✅ 关键: 清空旧的 AI 照片，准备接收新一轮
-        this.aiPhotos = []; 
-        this.allPhotos = [];
-
-        const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
-          sentence_pairs: this.sentencePairs
-        }, { timeout: 600000 });
-
-        if (!(genResp.data && genResp.data.results)) {
-          console.error("S4 generate-images 返回异常：", genResp.data);
-          alert("S4 生成图片时出错，请查看控制台");
-          return;
-        }
-
-        const results = genResp.data.results;
-        console.log("S4 生成图片结果：", results);
-
-        const BACKEND_BASE = "http://127.0.0.1:5000";
-        if (!Array.isArray(this.aiPhotos)) this.aiPhotos = [];
-
-        const setAiPhoto = (index, obj) => {
-          if (typeof this.$set === 'function') {
-            this.$set(this.aiPhotos, index, obj);
-          } else {
-            this.aiPhotos[index] = obj;
-            this.aiPhotos = this.aiPhotos.slice();
-          }
-        };
-
-        results.forEach(res => {
-          const idx = res.index;
-          const urls = res.generated_urls || [];
-          if (!urls.length) return;
-          let firstUrl = urls[0];
-
-          if (firstUrl.startsWith("/")) {
-            firstUrl = BACKEND_BASE + firstUrl;
-          } else if (!firstUrl.startsWith("http://") && !firstUrl.startsWith("https://")) {
-            firstUrl = BACKEND_BASE + "/static/generated/" + firstUrl;
-          }
-          const pair = this.sentencePairs.find(p => p.index === idx); // ✅ [修改] 查找正确的 pair
-          
-          let targetAiIndex = -1;
-          if (pair && pair.photo) {
-            const photoSlot = this.photos.findIndex(p => p.url === pair.photo || (p.file && pair.photo.includes("data:"))); // 修正
-            if (photoSlot !== -1) targetAiIndex = photoSlot;
-          }
-          if (targetAiIndex === -1) {
-            const emptyIndex = this.aiPhotos.findIndex(a => !a.url);
-            if (emptyIndex !== -1) targetAiIndex = emptyIndex;
-          }
-          if (targetAiIndex === -1) {
-            targetAiIndex = this.aiPhotos.length;
-            this.aiPhotos.push({});
-          }
-          const aiObj = {
-            file: null, url: firstUrl,
-            name: `ai_generated_s4_${Date.now()}_${targetAiIndex}.jpg`,
-            prompt: res.prompt || pair?.prompt || null, // ✅ 保存 prompt
-            origin_pair_index: idx
-          };
-          this.allPhotos.push({
-            ...this.photos[targetAiIndex] || {},
-            aiGenerated: aiObj, index: idx
-          });
-          setAiPhoto(targetAiIndex, aiObj);
-        });
-
-        console.log("S4: 图像更新完毕");
-        // alert("S4: 图像更新完毕");
-      } catch (error) {
-        console.error("Error in generateImagesFromUpdatedNarrative:", error);
-        alert("S4: 根据叙事更新图像时出错，请查看控制台");
-      }
-    },
-
-    // ✅ (新增 Stage 4) 图像更新 (根据用户建议)
-    async updateImagesWithSuggestion() {
-      if (this.currentStage !== 4) return;
-      
-      const suggestion = this.aiSuggestion.trim();
-      if (!suggestion) {
-        alert("请输入您对图像的修改建议");
-        return;
-      }
-      
-      if (this.aiPhotos.length === 0) {
-        alert("当前没有 AI 图像可供修改");
-        return;
-      }
-      
-      console.log(`S4: 开始根据建议 "${suggestion}" 修改 ${this.aiPhotos.length} 张图片...`);
-      
-      // 1. 手动构建 sentence_pairs
-      const manual_sentence_pairs = this.aiPhotos.map((photo, index) => {
-        const original_prompt = photo.prompt || "a photo"; // 降级处理
-        return {
-          index: index, // 使用 aiPhotos 的索引
-          prompt: `${original_prompt}, ${suggestion}`, // 附加建议
-          photo: null // 我们是生成新图，不是图生图
-        }
-      }).filter(p => p.prompt); // 确保有 prompt
-      
-      if (manual_sentence_pairs.length === 0) {
-        alert("没有找到可供修改的原始 Prompt");
-        return;
-      }
-      
-      console.log("S4: 手动生成的 new_prompts:", manual_sentence_pairs);
-
-      // 2. 调用 /generate-images
-      try {
-        const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
-          sentence_pairs: manual_sentence_pairs
-        }, { timeout: 600000 });
+        // ✅ [修改] 只过滤新 prompt，并限制数量
+        const toGenerate = newSentencePairs.filter(p => p.prompt);
+        const limitedToGenerate = toGenerate.slice(0, 2); // ✅ 限制 2 张
         
-        if (!(genResp.data && genResp.data.results)) {
-          console.error("S4 updateImagesWithSuggestion 返回异常：", genResp.data);
-          alert("根据建议更新图片时出错，请查看控制台");
-          return;
-        }
+        console.log(`S4: 找到 ${toGenerate.length} 个新 prompt，将生成 ${limitedToGenerate.length} 张。`);
 
-        const results = genResp.data.results;
-        console.log("S4 根据建议生成的图片结果：", results);
+        if (!limitedToGenerate.length) {
+          console.log("S4: 没有需要生成的 new prompt，跳过");
+        } else {
+          const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
+            sentence_pairs: limitedToGenerate // ✅ 发送限制后的列表
+          }, { timeout: 600000 });
 
-        const BACKEND_BASE = "http://127.0.0.1:5000";
-
-        const setAiPhoto = (index, obj) => {
-          if (typeof this.$set === 'function') {
-            this.$set(this.aiPhotos, index, obj);
-          } else {
-            this.aiPhotos[index] = obj;
-            this.aiPhotos = this.aiPhotos.slice();
+          if (!(genResp.data && genResp.data.results)) {
+            console.error("S4 generate-images 返回异常：", genResp.data);
+            alert("S4 生成图片时出错，请查看控制台");
+            return;
           }
-        };
 
-        // 3. 原地替换 aiPhotos
-        results.forEach(res => {
-          const idx = res.index; // 这里的 index 对应我们 aiPhotos 的索引
-          if (idx >= 0 && idx < this.aiPhotos.length) {
+          const results = genResp.data.results;
+          console.log("S4 生成图片结果：", results);
+
+          const BACKEND_BASE = "http://127.0.0.1:5000";
+
+          results.forEach(res => {
+            const idx = res.index; // 这个 index 对应 limitedToGenerate 的索引
+            const originalPair = limitedToGenerate[idx]; // 获取原始 pair
+            
             const urls = res.generated_urls || [];
-            if (!urls.length) return; // 跳过生成失败的
-
+            if (!urls.length) return;
             let firstUrl = urls[0];
+
             if (firstUrl.startsWith("/")) {
               firstUrl = BACKEND_BASE + firstUrl;
             } else if (!firstUrl.startsWith("http://") && !firstUrl.startsWith("https://")) {
               firstUrl = BACKEND_BASE + "/static/generated/" + firstUrl;
             }
             
-            // 更新 aiPhotos 数组中*对应索引*的对象
-            const updatedAiObj = {
-              ...this.aiPhotos[idx], // 保留旧信息
-              url: firstUrl, // 更新 URL
-              prompt: res.prompt, // 更新为修改后的 Prompt
-              name: `ai_modified_${Date.now()}_${idx}.jpg`,
+            const aiObj = {
+              file: null, url: firstUrl,
+              name: `ai_generated_s4_${Date.now()}.jpg`,
+              prompt: res.prompt || originalPair?.prompt || null, // ✅ 保存 prompt
+              iterationLabel: `Iter ${this.iterationCount}` // ✅ [新增] 迭代标签
             };
             
-            setAiPhoto(idx, updatedAiObj);
-          }
-        });
+            this.aiPhotos.push(aiObj); // ✅ [修改] 追加到末尾
+          });
+          
+          console.log(`S4: ${results.length} 张图像追加完毕`);
+        }
+        
+        // --- ✅ [新增] 迭代收尾工作 ---
+        // 1. 将上一轮的“紫色更新” (UpdatedText) 合并到“黑色基础” (IntegratedText)
+        this.assistantIntegratedText = (this.assistantIntegratedText + '\n' + this.assistantUpdatedText).trim();
+        // 2. 增加迭代次数
+        this.iterationCount += 1;
+        // 3. 清空上一轮的 Stage 4 状态，准备新一轮
+        this.assistantUpdatedText = '';
+        this.aiSuggestion = '';
+        this.stage4Questions = [];
+        this.currentQuestionIndex = 0;
 
-        alert("根据您的建议，图像更新完毕！");
+        console.log(`开始第 ${ this.iterationCount} 轮迭代`);
+
+        if (this.iterationCount > this.maxIterations) {
+          console.log("已完成最后一轮迭代，自动终止。");
+          this.iterationStopped = true;
+        }
+        // --- 结束 ---
         
       } catch (error) {
-         console.error("Error in updateImagesWithSuggestion:", error);
-         alert("S4: 根据建议更新图像时出错，请查看控制台");
+        console.error("Error in generateNewImagesFromNarrative:", error);
+        alert("S4: 根据叙事更新图像时出错，请查看控制台");
       }
+    },
+
+    // ✅ [修改] 图像更新 (根据用户建议)
+    async submitIndividualPhotoUpdate() {
+      const index = this.suggestionForPhotoIndex;
+      const suggestion = this.currentSuggestionText.trim();
+      
+      if (index === null || !suggestion) return;
+      
+      const photo = this.aiPhotos[index];
+      if (!photo || !photo.prompt) {
+        alert("未找到原始 Prompt，无法更新。");
+        return;
+      }
+      
+      console.log(`S4: 开始根据建议 "${suggestion}" 修改照片 ${index} (a.k.a. ${this.getLetterIndex(index)})...`);
+      this.isUpdatingPhoto = true;
+      
+      // 1. 手动构建 sentence_pairs
+      const manual_sentence_pairs = [{
+          index: 0, // 总是 0，因为我们只发了一张
+          prompt: `${photo.prompt}, ${suggestion}`, // 附加建议
+          photo: null 
+      }];
+      
+      // 2. 调用 /generate-images
+      try {
+        const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
+          sentence_pairs: manual_sentence_pairs
+        }, { timeout: 600000 });
+        
+        if (!(genResp.data && genResp.data.results && genResp.data.results.length > 0)) {
+          console.error("S4 submitIndividualPhotoUpdate 返回异常：", genResp.data);
+          alert("根据建议更新图片时出错，请查看控制台");
+          this.isUpdatingPhoto = false;
+          return;
+        }
+
+        const result = genResp.data.results[0]; // 只取第一个
+        
+        const urls = result.generated_urls || [];
+        if (!urls.length) {
+           alert("AI 未能生成图片，请重试");
+           this.isUpdatingPhoto = false;
+           return;
+        }
+
+        let firstUrl = urls[0];
+        if (firstUrl.startsWith("/")) {
+          firstUrl = BACKEND_BASE + firstUrl;
+        } else if (!firstUrl.startsWith("http://") && !firstUrl.startsWith("https://")) {
+          firstUrl = BACKEND_BASE + "/static/generated/" + firstUrl;
+        }
+        
+        // 3. 原地替换 aiPhotos
+        const updatedAiObj = {
+          ...this.aiPhotos[index], // 保留旧信息
+          url: firstUrl, // 更新 URL
+          prompt: result.prompt, // 更新为修改后的 Prompt
+          name: `ai_modified_${Date.now()}_${index}.jpg`,
+        };
+        
+        // 使用 $set 或 slice 确保响应性
+        this.$set(this.aiPhotos, index, updatedAiObj);
+        
+        alert(`照片 ${this.getLetterIndex(index)} 更新完毕！`);
+        
+      } catch (error) {
+         console.error("Error in submitIndividualPhotoUpdate:", error);
+         alert("S4: 根据建议更新图像时出错，请查看控制台");
+      } finally {
+        this.isUpdatingPhoto = false;
+        this.showSuggestionModal = false; // 关闭模态框
+      }
+    },
+    
+    // --- ✅ [新增] Req 1 模态框 ---
+    openSuggestionModal(index) {
+      this.suggestionForPhotoIndex = index;
+      this.currentSuggestionText = ''; // 清空
+      this.showSuggestionModal = true;
     },
     
     // --- ✅ [新增] Req 1 拖拽方法 ---
@@ -1786,9 +1764,36 @@ export default {
   flex-shrink: 0; /* ✅ [新增] 防止缩放 */
 }
 
+/* ✅ [新增] AI 照片槽位 */
+.photo-slot-ai {
+  width: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px; /* 按钮和图片的间距 */
+  align-items: center;
+}
+.edit-photo-btn {
+  width: 100%;
+  padding: 4px;
+  font-size: 12px;
+  background: #f0f2f5;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.edit-photo-btn:hover {
+  background: #e8ebf7;
+}
+.edit-photo-btn:disabled {
+  background: #f9f9f9;
+  color: #ccc;
+  cursor: not-allowed;
+}
+
+
 .photo-placeholder {
   width: 100%;
-  height: 100%;
+  height: 120px; /* ✅ [修改] 固定高度 */
   background: #f5f6f7;
   border: 2px dashed #d0d0d0;
   border-radius: 8px;
@@ -2191,5 +2196,61 @@ export default {
   font-size: 12px;
   font-weight: bold;
   z-index: 2;
+}
+
+/* --- ✅ [新增] Req 2 迭代标签样式 --- */
+.ai-photo-iter-label {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(124, 131, 185, 0.8); /* 紫色 */
+  color: white;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 10px;
+  font-weight: bold;
+  z-index: 2;
+}
+
+
+/* --- ✅ [新增] Req 1 模态框样式 --- */
+.suggestion-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.suggestion-modal {
+  background: white;
+  padding: 24px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.suggestion-modal h3 {
+  margin: 0;
+}
+.suggestion-modal textarea {
+  width: 100%;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 </style>
