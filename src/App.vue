@@ -23,6 +23,14 @@
 
       <div class="header-right">
       </div>
+      <div v-if="currentStage === 5" style="text-align: center; margin-top: 2px;">
+        <button 
+          class="control-btn primary"
+          @click="saveExperimentLog"
+          style="padding: 6px 8px; font-size: 12px; background: #ffffff; color: #666666;">
+          保存日志
+        </button>
+      </div>
     </header>
 
     <div class="main-content">
@@ -369,149 +377,141 @@
     </div>
   </div>
 </template>
-
 <script>
 import axios from 'axios'
 import { toRaw } from 'vue'
+
 export default {
   name: 'PhotoStoryAI',
   data() {
     return {
-      currentStage: 1, // ✅ 默认Stage 1
+      // === 实验日志字段 ===
+      userId: null,
+      sessionId: null,
+      startTime: null,
+      stageTimestamps: {
+        1: null, 2: null, 3: null, 4: null, 5: null
+      },
+      stage2QA: [],
+      stage4QA: [],
+      originalPhotosBase64: [],
+      aiPhotosHistory: [],
+      stage4Iterations: [],
+      stage4Modifications: [],
+      userAgent: navigator.userAgent,
+      screenResolution: `${screen.width}x${screen.height}`,
+
+      // === 原有状态 ===
+      currentStage: 1,
       photoPanelHeight: 360,
       isResizing: false,
-      aiVideo: { url: '' },  // Stage5 AI 增强视频
-      iterationCount: 1,      // Stage 4 迭代次数，初始为1
-      maxIterations: 3,       // ✅ 最大迭代轮数 (改为 3)
+      aiVideo: { url: '' },
+      iterationCount: 1,
+      maxIterations: 3,
       startY: 0,
       startHeight: 0,
       highlightedTexts: [],
-      aiSuggestion: '',               // Stage4 输入框绑定内容
-      modificationInProgress: false,  // 是否处于 AI 修改中（可用于按钮状态）
+      aiSuggestion: '',
+      modificationInProgress: false,
       selectedText: '',
-      integrating: false, // 整合文本状态
-      assistantIntegratedText: '', // AI助手整合后的文本,只读
-      photos: [], 
-      aiPhotos: [], 
+      integrating: false,
+      assistantIntegratedText: '',
+      photos: [],
+      aiPhotos: [],
       allPhotos: [],
       uploadTargetIndex: null,
-      userNarratives: {
-        1: '',
-        2: '',
-        3: '',
-        4: '',
-        5: ''
-      },
+      userNarratives: { 1: '', 2: '', 3: '', 4: '', 5: '' },
       currentQuestionIndex: 0,
-      questions: [], // Qwen返回的问题
-      sentencePairs: [], // [{sentence, photo, prompt}]
-      
-      // --- ✅ [新增] Stage 4 状态 ---
-      stage4Questions: [], // Stage 4 的引导问题
-      assistantUpdatedText: '', // Stage 4 AI 返回的紫色更新文本
-      isFetchingS4Questions: false, // Stage 4 获取问题 loading
-      isUpdatingText: false, // Stage 4 更新文本 loading
-      
-      // --- ✅ [新增] Req 1 拖拽 ---
-      aiResultHeight: 220, // 默认高度
+      questions: [],
+      sentencePairs: [],
+      stage4Questions: [],
+      assistantUpdatedText: '',
+      isFetchingS4Questions: false,
+      isUpdatingText: false,
+      aiResultHeight: 220,
       isResizingAiResult: false,
       startY_ai: 0,
       startHeight_ai: 0,
-      
-      // --- ✅ [新增] Req 2 迭代 ---
       iterationStopped: false,
-      
-      // --- ✅ [新增] Req 1 模态框 ---
       showSuggestionModal: false,
       suggestionForPhotoIndex: null,
       currentSuggestionText: '',
-      isUpdatingPhoto: false, // 单张照片更新 loading
+      isUpdatingPhoto: false,
     }
   },
   computed: {
     progressPercentage() {
       if (this.currentStage === 4) {
-        // ✅ [修改] 迭代从 1 开始
         return ((this.iterationCount - 1) / this.maxIterations) * 100
       }
-      // ✅ [修改] 增加分母检查
       if (this.currentStage === 2 && this.questions.length > 0) {
         return (this.answeredCount / this.questions.length) * 100
       }
       return 0
     },
     answeredCount() {
-      // ✅ [修改] 区分 Stage 2 和 4
       const list = this.currentStage === 2 ? this.questions : this.stage4Questions;
       if (!list) return 0;
       return list.filter(q => q.answered).length
     }
   },
-
+  mounted() {
+    const uuid = () => ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+      (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+    );
+    this.sessionId = uuid();
+    this.startTime = new Date().toISOString();
+    this.userId = localStorage.getItem('userId') || uuid();
+    localStorage.setItem('userId', this.userId);
+    console.log(`[Log] Session started: ${this.sessionId}`);
+  },
   methods: {
-// 替换：onEditableInput
     onEditableInput(e) {
       const el = this.$refs.editableNarrative;
       if (!el) return;
-
       const sel = window.getSelection();
       if (!sel || sel.rangeCount === 0) {
         this.userNarratives[this.currentStage] = el.innerHTML;
         return;
       }
       const range = sel.getRangeAt(0);
-
-      // 如果选区有内容，先删除选区（用户选中蓝字并直接输入的场景）
       if (!range.collapsed) {
         range.deleteContents();
-        // 更新 selection/range
         sel.removeAllRanges();
         sel.addRange(range);
       }
-
-      // 获取光标所在的元素（如果是文本节点则取父元素）
       let node = range.startContainer;
       const anchorEl = node.nodeType === 3 ? node.parentElement : node;
 
-      // ✅ [修改] 调用 isHistoryNode
-      // 判断元素是否为紫色历史段（兼容 style 或 computed）
       const isHistoryNode = (n) => {
         if (!n) return false;
         const inline = (n.style && n.style.color) ? n.style.color.toLowerCase() : '';
-         // ✅ [修改] 颜色
         if (inline && inline.includes('#7c83b9')) return true;
         try {
           const comp = window.getComputedStyle(n).color;
-           // ✅ [修改] 颜色 rgb(124, 131, 185)
           if (comp === 'rgb(124, 131, 185)') return true;
         } catch (err) {}
         return false;
       };
 
-      // ✅ [修改] 调用 isHistoryNode
-      // 如果光标在紫色段内，拆分紫色并插入黑色占位
       if (isHistoryNode(anchorEl)) {
-        this.splitHistorySpanAtRange(anchorEl, range); // ✅ [修改] 调用 splitHistorySpanAtRange
-        // splitHistorySpanAtRange 会把光标放到黑色占位里
+        this.splitHistorySpanAtRange(anchorEl, range);
       }
 
-      // 保存当前 HTML（紫色段已被正确拆分或保持不动）
       this.userNarratives[this.currentStage] = el.innerHTML;
     },
-
     switchStage(stage) {
+      if (!this.stageTimestamps[stage]) {
+        this.stageTimestamps[stage] = new Date().toISOString();
+      }
       this.currentStage = stage;
 
-      // 仅在第一次进入该 stage 且该 stage 目前为空时，带入上一阶段文本（以纯文本方式取前一阶段内容，避免重复包 span）
       if (stage > 1 && !this.userNarratives[stage]) {
         const prevHtml = this.userNarratives[stage - 1] || '';
         const tmp = document.createElement('div');
         tmp.innerHTML = prevHtml;
         const prevText = tmp.textContent || tmp.innerText || '';
-
         if (prevText) {
-          // ✅ [修改] 颜色
-          // 生成一个紫色 span（历史） + 紧随一个黑色空 span（用于后续输入）
           const purple = `<span style="color:#7c83b9;">${this.escapeHtml(prevText)}</span>`;
           const black = `<span style="color:#000000;">\u200B</span>`;
           this.userNarratives[stage] = purple + black;
@@ -520,31 +520,26 @@ export default {
         }
       }
 
-      // --- ✅ [新增] Stage 状态重置 ---
       if (stage === 4) {
         this.stage4Questions = [];
         this.assistantUpdatedText = '';
         this.aiSuggestion = '';
-        this.iterationCount = 1; // 每次进入 Stage 4 都重置迭代计数
+        this.iterationCount = 1;
         this.currentQuestionIndex = 0;
-        this.iterationStopped = false; // ✅ [新增] 重置终止状态
+        this.iterationStopped = false;
       }
       if (stage === 2) {
         this.currentQuestionIndex = 0;
-        // this.questions = []; // 可选：是否每次都清空
       }
       if (stage === 3) {
-         this.assistantUpdatedText = ''; // 从4切回3时，清除紫字
+        this.assistantUpdatedText = '';
       }
-      // --- END ---
 
-      // 更新编辑区 DOM，并把光标放在黑色 span（如果存在）
       this.$nextTick(() => {
         const editor = this.$refs.editableNarrative;
         if (!editor) return;
         editor.innerHTML = this.userNarratives[stage] || '';
 
-        // 确保末尾存在黑色 span，若没有创建一个
         let blackSpan = null;
         const spans = Array.from(editor.querySelectorAll('span'));
         for (const s of spans.reverse()) {
@@ -555,74 +550,59 @@ export default {
           }
         }
         if (!blackSpan) {
-          // append a black span with zwsp
           const s = document.createElement('span');
           s.style.color = '#000000';
           s.innerHTML = '\u200B';
           editor.appendChild(s);
           blackSpan = s;
         }
-
-        // 将光标放入黑色 span（末尾），便于输入并保证新输入为黑色
         this.placeCaretInElement(blackSpan);
       });
 
       console.log(`已切换到 Stage ${stage}`);
+      this.$nextTick(() => {
+        this.userNarratives[stage] = this.$refs.editableNarrative?.innerHTML || '';
+      });
     },
-    // ✅ [修改] 重命名
-    // 新增：把紫色 span 在光标处拆成 左紫 + 黑色插入位 + 右紫
     splitHistorySpanAtRange(purpleSpan, range) {
-      // purpleSpan 必须包含文本（如果包含复杂子节点这里做一个简单文本抽取处理）
       const tmp = document.createElement('div');
       tmp.appendChild(purpleSpan.cloneNode(true));
       const fullText = tmp.textContent || '';
 
-      // 通过一个 Range 计算从 purpleSpan 开始到光标处的文本长度
       const preRange = document.createRange();
       preRange.setStart(purpleSpan, 0);
       try {
         preRange.setEnd(range.startContainer, range.startOffset);
       } catch (err) {
-        // 若 setEnd 失败（极少情况），退回到以文本长度分割
         preRange.selectNodeContents(purpleSpan);
         preRange.setEnd(purpleSpan, 0);
       }
       const leftText = preRange.toString();
       const rightText = fullText.slice(leftText.length);
-
       const parent = purpleSpan.parentNode;
 
-      // 创建新的左紫 span（若 leftText 为空则不插入）
       if (leftText) {
         const leftSpan = document.createElement('span');
-        leftSpan.style.color = '#7c83b9'; // ✅ [修改] 颜色
+        leftSpan.style.color = '#7c83b9';
         leftSpan.textContent = leftText;
         parent.insertBefore(leftSpan, purpleSpan);
       }
 
-      // 创建黑色插入位（带一个零宽字符，便于放置光标）
       const blackSpan = document.createElement('span');
       blackSpan.style.color = '#000000';
-      blackSpan.innerHTML = '\u200B'; // zero-width space
+      blackSpan.innerHTML = '\u200B';
       parent.insertBefore(blackSpan, purpleSpan);
 
-      // 创建新的右紫 span（若 rightText 为空则不插入）
       if (rightText) {
         const rightSpan = document.createElement('span');
-        rightSpan.style.color = '#7c83b9'; // ✅ [修改] 颜色
+        rightSpan.style.color = '#7c83b9';
         rightSpan.textContent = rightText;
         parent.insertBefore(rightSpan, purpleSpan);
       }
 
-      // 移除原来的 purpleSpan（已被拆分）
       parent.removeChild(purpleSpan);
-
-      // 把光标放到 blackSpan 内
       this.placeCaretInElement(blackSpan);
     },
-
-
-    // 把光标放到元素内部（元素末端）
     placeCaretInElement(el) {
       if (!el) return;
       el.focus && el.focus();
@@ -633,107 +613,77 @@ export default {
       sel.removeAllRanges();
       sel.addRange(range);
     },
-
-    // 简单转义 HTML（用于把纯文本包进 span）
     escapeHtml(str) {
       return String(str)
         .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
+        .replace(/</g, '<')
+        .replace(/>/g, '>')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
     },
-    // ✅ [修改] 重命名
-    // 判断节点是否为我们定义的“紫色历史段”
     isHistoryNode(node) {
       if (!node) return false;
-      if (node.nodeType !== 1) return false; // 不是元素
-      // 优先检查内联 style，再兼容 computed style rgb
+      if (node.nodeType !== 1) return false;
       const inline = (node.style && node.style.color) ? node.style.color.toLowerCase() : '';
-      if (inline && inline.includes('#7c83b9')) return true; // ✅ [修改] 颜色
+      if (inline && inline.includes('#7c83b9')) return true;
       try {
         const comp = window.getComputedStyle(node).color;
-        if (comp === 'rgb(124, 131, 185)') return true; // ✅ [修改] 颜色
+        if (comp === 'rgb(124, 131, 185)') return true;
       } catch (err) {}
       return false;
     },
-
-    // 处理删除键（Backspace / Delete），保证紫色段可以被整段删除或在紫字间插入的黑字可删
     onEditableKeydown(e) {
       const editor = this.$refs.editableNarrative;
       if (!editor) return;
-
       const sel = window.getSelection();
       if (!sel || sel.rangeCount === 0) return;
       const range = sel.getRangeAt(0);
 
-      // 如果存在选区（用户选中了一段），让默认行为生效，之后延迟更新保存内容
       if (!range.collapsed) {
-        // 保存在下一tick（删除/替换后 DOM 已变）
         setTimeout(() => {
           this.userNarratives[this.currentStage] = editor.innerHTML;
         }, 0);
         return;
       }
 
-      // helper：找到当前光标所在的元素（若在文本节点则返回父元素）
       const getAnchorElement = (r) => {
         let n = r.startContainer;
         return (n.nodeType === 3 ? n.parentElement : n);
       };
-
       const anchorEl = getAnchorElement(range);
 
-      // ---------- Backspace 逻辑 ----------
       if (e.key === 'Backspace') {
-        // 情况 A：如果光标在一个黑色 span（插入位）并且光标位于其开始位置，
-        // 则尝试删除前一个 sibling，如果前一个是紫色 span，就删除它（整段删除）
-        if (anchorEl && anchorEl.nodeType === 1) {
-          // 如果是文本节点父元素且 offset===0（光标在开头）
-          const isAtStart = (() => {
-            // 若 startContainer 是文本节点，检查 startOffset
-            if (range.startContainer.nodeType === 3) {
-              return range.startOffset === 0;
-            }
-            // 否则使用 startOffset 与 childNodes 长度比较
+        const isAtStart = (() => {
+          if (range.startContainer.nodeType === 3) {
             return range.startOffset === 0;
-          })();
-
-          if (isAtStart) {
-            const prev = anchorEl.previousSibling;
-            if (prev && this.isHistoryNode(prev)) { // ✅ [修改] 调用 isHistoryNode
-              e.preventDefault();
-              prev.parentNode.removeChild(prev);
-              // 更新 model 并把光标放到当前 anchorEl 开头
-              this.$nextTick(() => {
-                this.placeCaretInElement(anchorEl);
-                this.userNarratives[this.currentStage] = editor.innerHTML;
-              });
-              return;
-            }
+          }
+          return range.startOffset === 0;
+        })();
+        if (isAtStart) {
+          const prev = anchorEl.previousSibling;
+          if (prev && this.isHistoryNode(prev)) {
+            e.preventDefault();
+            prev.parentNode.removeChild(prev);
+            this.$nextTick(() => {
+              this.placeCaretInElement(anchorEl);
+              this.userNarratives[this.currentStage] = editor.innerHTML;
+            });
+            return;
           }
         }
-
-        // 情况 B：如果光标直接位于紫色 span 内（比如用户把光标点在紫字中），
-        // 我们允许在紫字内部删除字符（默认行为）——无需阻止
-        // 但若想要在紫字内部输入把插入部分变黑，已有 onEditableInput 会拆分
-        return; // 让默认行为继续
+        return;
       }
 
-      // ---------- Delete 键 逻辑 ----------
       if (e.key === 'Delete') {
-        // 情况：若光标在黑色 span 末尾并且下一个 sibling 是紫色 span -> 删除那个紫色段
-        // 判定是否在元素末尾
         const isAtEnd = (() => {
           if (range.startContainer.nodeType === 3) {
             return range.startOffset === range.startContainer.textContent.length;
           }
           return range.startOffset === anchorEl.childNodes.length;
         })();
-
         if (isAtEnd) {
           const next = anchorEl.nextSibling;
-          if (next && this.isHistoryNode(next)) { // ✅ [修改] 调用 isHistoryNode
+          if (next && this.isHistoryNode(next)) {
             e.preventDefault();
             next.parentNode.removeChild(next);
             this.$nextTick(() => {
@@ -743,35 +693,29 @@ export default {
             return;
           }
         }
-
-        // 否则允许默认 Delete 行为（删除字符）
         return;
       }
-
-      // 其余按键正常处理（例如字符输入会触发 input 事件，在 onEditableInput 处理拆分/插入）
     },
-
-    // ✅ [废弃] S4 迭代逻辑 (逻辑已移入 generateNewImagesFromNarrative)
-    // async continueModification() { ... }
-
-
-    // 获取问题
     async fetchQuestions() {
       console.log('开始获取问题...')
-      if (this.currentStage === 2) {    
+      if (this.currentStage === 2) {
         try {
-          // 把每张照片转成 base64
           const base64Photos = await Promise.all(
             this.photos.map(photo => this.convertToBase64(photo.file))
           );
-
           const response = await axios.post('http://127.0.0.1:5000/generate-questions', {
-            photos: base64Photos,  // 发送 Base64 编码图片
-            narratives: this.userNarratives[1],  // 获取 Stage 1 的口述文本
+            photos: base64Photos,
+            narratives: this.userNarratives[1],
           });
-
           this.questions = response.data.questions || [];
-          this.currentQuestionIndex = 0; // ✅ 重置索引
+          this.currentQuestionIndex = 0;
+
+          this.stage2QA = this.questions.map((q, idx) => ({
+            stage: 2,
+            index: idx,
+            question: q.text,
+            fetchedTime: new Date().toISOString()
+          }));
         } catch (error) {
           console.error("Error fetching questions:", error);
         }
@@ -782,12 +726,9 @@ export default {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
         reader.onerror = (error) => reject(error);
-        reader.readAsDataURL(file); // 直接读取为 Base64
+        reader.readAsDataURL(file);
       });
     },
-    
-    // --- ✅ [新增] 修复 BUG 所需的帮助函数 ---
-    // 将 URL (http://localhost... 或 blob:...) 转换为 Base64 data URL
     async urlToBase64(url) {
       if (!url) return null;
       try {
@@ -800,124 +741,128 @@ export default {
           const reader = new FileReader();
           reader.onloadend = () => resolve(reader.result);
           reader.onerror = (err) => {
-             console.error("FileReader error:", err);
-             reject(err);
+            console.error("FileReader error:", err);
+            reject(err);
           };
           reader.readAsDataURL(blob);
         });
       } catch (error) {
         console.error("Error converting URL to Base64:", url, error);
-        return null; // Handle error gracefully
+        return null;
       }
     },
-    // --- 结束 [新增] ---
-
     startResize(e) {
-      this.isResizing = true
-      this.startY = e.clientY
-      this.startHeight = this.photoPanelHeight
-      document.addEventListener('mousemove', this.doResize)
-      document.addEventListener('mouseup', this.stopResize)
+      this.isResizing = true;
+      this.startY = e.clientY;
+      this.startHeight = this.photoPanelHeight;
+      document.addEventListener('mousemove', this.doResize);
+      document.addEventListener('mouseup', this.stopResize);
     },
     addPhoto() {
-      // this.photos.push({})
-      this.$refs.fileInput.click()
-      console.log('已添加一个新的照片面板')
+      this.$refs.fileInput.click();
+      console.log('已添加一个新的照片面板');
     },
     triggerFileInput(index) {
-      this.uploadTargetIndex = index
-      this.$refs.fileInput.click()
+      this.uploadTargetIndex = index;
+      this.$refs.fileInput.click();
     },
     confirmUpload() {
       if (this.photos.every(photo => !photo.file)) {
-        alert("请先选择图片！")
-        return
+        alert("请先选择图片！");
+        return;
       }
-      console.log("准备上传的图片：", this.photos.map(p => p.name))
-      // 未来在这里调用 Qwen API 或上传到服务器
+      console.log("准备上传的图片：", this.photos.map(p => p.name));
     },
-    handleFileChange(event) {
-      const files = Array.from(event.target.files)
-      if (!files.length) return
+    async uploadPhoto(file) {
+      const formData = new FormData();
+      formData.append('photo', file);
 
-      const file = files[0]
+      try {
+        const resp = await axios.post('http://127.0.0.1:5000/upload-photo', formData);
+        if (resp.data.success && resp.data.url) {
+          return resp.data.url; // e.g. "/static/uploads/abc123.jpg"
+        } else {
+          throw new Error(resp.data.message || 'Upload failed');
+        }
+      } catch (err) {
+        console.error('Photo upload failed:', err);
+        alert('图片上传失败，请重试');
+        return null;
+      }
+    },
+    async handleFileChange(event) {
+      const files = Array.from(event.target.files);
+      if (!files.length) return;
+      const file = files[0];
+
+      // ✅ 先上传，获取持久化 URL
+      const uploadedUrl = await this.uploadPhoto(file);
+      if (!uploadedUrl) return;
+
       const newPhoto = {
-        file,
-        url: URL.createObjectURL(file),
+        file, // 仍保留 file（供 base64 生成用）
+        url: uploadedUrl, // ← 关键！不再是 blob:
         name: file.name,
-      }
+      };
 
-      // ✅ 如果点击的是指定槽位，则替换那一项
       if (this.uploadTargetIndex !== null) {
-        this.photos[this.uploadTargetIndex] = newPhoto
-        this.uploadTargetIndex = null
+        this.$set(this.photos, this.uploadTargetIndex, newPhoto);
+        this.uploadTargetIndex = null;
       } else {
-        // ✅ 否则添加新照片
-        this.photos.push(newPhoto)
+        this.photos.push(newPhoto);
       }
 
-      console.log('已选择图片：', file.name)
-      event.target.value = ''
+      console.log('已上传图片：', file.name, '→', uploadedUrl);
+      event.target.value = '';
     },
-
     doResize(e) {
-      if (!this.isResizing) return
-      const diff = e.clientY - this.startY
-      const newHeight = Math.min(Math.max(200, this.startHeight + diff), 500)
-      this.photoPanelHeight = newHeight
+      if (!this.isResizing) return;
+      const diff = e.clientY - this.startY;
+      const newHeight = Math.min(Math.max(200, this.startHeight + diff), 500);
+      this.photoPanelHeight = newHeight;
     },
     stopResize() {
-      this.isResizing = false
-      document.removeEventListener('mousemove', this.doResize)
-      document.removeEventListener('mouseup', this.stopResize)
+      this.isResizing = false;
+      document.removeEventListener('mousemove', this.doResize);
+      document.removeEventListener('mouseup', this.stopResize);
     },
     handleTextSelection() {
-      const selection = window.getSelection()
+      const selection = window.getSelection();
       if (selection.toString()) {
-        this.selectedText = selection.toString()
+        this.selectedText = selection.toString();
       }
     },
     toggleHighlight(index) {
-      const idx = this.highlightedTexts.indexOf(index)
-      if (idx > -1) this.highlightedTexts.splice(idx, 1)
-      else this.highlightedTexts.push(index)
+      const idx = this.highlightedTexts.indexOf(index);
+      if (idx > -1) this.highlightedTexts.splice(idx, 1);
+      else this.highlightedTexts.push(index);
     },
     calculateMemoryMetrics() {
-      const stage = this.currentStage
-      const content = this.userNarratives[stage]
-
-      // ✅ 将当前Stage的内容“保存”下来
-      console.log(`Stage ${stage} 的口述内容已保存：`, content)
-
-      this.$message?.success?.(`第 ${stage} 阶段的口述内容已保存`) 
-      // 或者用 alert:
-      alert(`第 ${stage} 阶段的口述内容已保存`)
+      const stage = this.currentStage;
+      const content = this.userNarratives[stage];
+      console.log(`Stage ${stage} 的口述内容已保存：`, content);
+      alert(`第 ${stage} 阶段的口述内容已保存`);
     },
     async integrateText() {
       if (this.currentStage !== 3) {
         alert("整合文本仅在 Stage 3 可用");
         return;
       }
-
-      // 使用 Stage2 的口述和 Stage2 的已回答问答对作为输入
       const narrative = this.userNarratives[2] || '';
       const qa_pairs = (this.questions || [])
         .filter(q => q.answered && q.answer && q.answer.trim())
         .map(q => ({ question: q.text, answer: q.answer.trim() }));
-
       if (!narrative && qa_pairs.length === 0) {
         alert("没有可供整合的口述或问答，请先在 Stage2 完成口述与回答。");
         return;
       }
- 
-      // Debug 日志，便于后端看到我们真正发了什么
+
       console.log("准备发往 /integrate-text 的 payload:", { narrative, qa_pairs });
 
       try {
         this.integrating = true;
-        this.assistantIntegratedText = ''; // 清空旧结果
-        this.assistantUpdatedText = '';  // ✅ 确保紫字也被清空
-
+        this.assistantIntegratedText = '';
+        this.assistantUpdatedText = '';
         const resp = await axios.post('http://127.0.0.1:5000/integrate-text', {
           narrative,
           qa_pairs,
@@ -925,15 +870,12 @@ export default {
         }, { timeout: 120000 });
 
         if (resp.data && resp.data.integrated_text) {
-          // **关键**：只把结果写进 assistantIntegratedText，不修改 userNarratives[3]
           this.assistantIntegratedText = String(resp.data.integrated_text).trim();
-          // 给用户提示
           this.$message?.success?.("整合完成，已在 AI 面板显示（只读）");
         } else {
           console.error("integrate-text 返回结构异常：", resp.data);
           alert("整合失败，请查看后端日志");
         }
-
       } catch (err) {
         console.error("整合文本错误：", err);
         alert("整合文本时出错，请查看控制台或后端日志");
@@ -941,20 +883,18 @@ export default {
         this.integrating = false;
       }
     },
-
     async generateImages() {
       if (this.currentStage !== 3) {
         alert("图像补全功能仅在 Stage 3 可用");
         return;
       }
       console.log('开始获取文生图prompt...');
-      const narrative = this.assistantIntegratedText; // 获取 AI 整合之后的叙述性文本
-      
-      if (!narrative) { // ✅ 增加检查
+      const narrative = this.assistantIntegratedText;
+      if (!narrative) {
         alert("AI 整合结果为空，请先点击 [整合文本]");
         return;
       }
-      
+
       try {
         const base64Photos = await Promise.all(
           this.photos.map(photo => this.convertToBase64(photo.file))
@@ -966,26 +906,26 @@ export default {
 
         this.sentencePairs = response.data.sentence_pairs || [];
         console.log('图文配对结果：', toRaw(this.sentencePairs));
-
-        // 按照 index 排序
         this.sentencePairs.sort((a, b) => a.index - b.index);
 
         alert("Qwen已完成分句与prompt生成");
 
-        const toGenerate = this.sentencePairs.map((p, i) => ({ ...p, __index: i }))
-                                        .filter(p => p.prompt);
-
+        const toGenerate = this.sentencePairs.filter(p => p.prompt);
         if (!toGenerate.length) {
           alert("没有需要生成的 prompt，操作结束");
           return;
         }
 
-        // ✅ 清空旧的 AI 照片
-        this.aiPhotos = []; 
+        this.aiPhotos = [];
         this.allPhotos = [];
 
+        const sentencePairsWithPhotos = this.sentencePairs.map((sentence, index) => ({
+          ...sentence,
+          photo: base64Photos || null
+        }));
+
         const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
-          sentence_pairs: this.sentencePairs
+          sentence_pairs: sentencePairsWithPhotos,
         }, { timeout: 600000 });
 
         if (!(genResp.data && genResp.data.results)) {
@@ -999,59 +939,33 @@ export default {
 
         const BACKEND_BASE = "http://127.0.0.1:5000";
 
-        if (!Array.isArray(this.aiPhotos)) this.aiPhotos = [];
-
-        const setAiPhoto = (index, obj) => {
-          if (typeof this.$set === 'function') {
-            this.$set(this.aiPhotos, index, obj);
-          } else {
-            this.aiPhotos[index] = obj;
-            this.aiPhotos = this.aiPhotos.slice();
-          }
-        };
-
-        // 1. 将原始照片与 AI 生成的照片配对
         results.forEach(res => {
           const idx = res.index;
           const urls = res.generated_urls || [];
           if (!urls.length) return;
           let firstUrl = urls[0];
-
           if (firstUrl.startsWith("/")) {
             firstUrl = BACKEND_BASE + firstUrl;
           } else if (!firstUrl.startsWith("http://") && !firstUrl.startsWith("https://")) {
             firstUrl = BACKEND_BASE + "/static/generated/" + firstUrl;
           }
 
-          const pair = this.sentencePairs.find(p => p.index === idx); // ✅ [修改] 查找正确的 pair
-
+          const pair = this.sentencePairs.find(p => p.index === idx);
           let targetAiIndex = -1;
           if (pair && pair.photo) {
-            // (原始逻辑)
-            // if (idx < this.photos.length) { 
-            //   targetAiIndex = idx;
-            // } else {
-            //   const photoSlot = this.photos.findIndex(p => p.url === pair.photo);
-            //   if (photoSlot !== -1) targetAiIndex = photoSlot;
-            // }
-            
-            // ✅ [修改] 查找原始照片在 photos 数组中的索引
-            const photoSlot = this.photos.findIndex(p => p.url === pair.photo || (p.file && pair.photo.includes("data:"))); // 修正
+            const photoSlot = this.photos.findIndex(p => p.url === pair.photo || (p.file && pair.photo.includes("data:")));
             if (photoSlot !== -1) targetAiIndex = photoSlot;
-
           }
 
           if (targetAiIndex === -1) {
             const emptyIndex = this.aiPhotos.findIndex(a => !a.url);
             if (emptyIndex !== -1) targetAiIndex = emptyIndex;
           }
-
           if (targetAiIndex === -1) {
             targetAiIndex = this.aiPhotos.length;
             this.aiPhotos.push({});
           }
 
-          // 2. 将生成的图片插入到 allPhotos 中
           const aiObj = {
             file: null,
             url: firstUrl,
@@ -1060,15 +974,31 @@ export default {
             origin_pair_index: idx
           };
 
-          // 插入到 allPhotos
           this.allPhotos.push({
-            ...this.photos[targetAiIndex] || {}, // 可能是原始照片
+            ...this.photos[targetAiIndex] || {},
             aiGenerated: aiObj,
             index: idx
           });
 
-          // 更新 aiPhotos
-          setAiPhoto(targetAiIndex, aiObj);
+          if (typeof this.$set === 'function') {
+            this.$set(this.aiPhotos, targetAiIndex, aiObj);
+          } else {
+            this.aiPhotos[targetAiIndex] = aiObj;
+            this.aiPhotos = this.aiPhotos.slice();
+          }
+        });
+
+        // ✅ 记录批量生成
+        this.aiPhotosHistory.push({
+          timestamp: new Date().toISOString(),
+          type: 'batch',
+          iterationLabel: `S3_Init`,
+          count: results.length,
+          pairs: results.map(r => ({
+            index: r.index,
+            prompt: r.prompt,
+            urls: r.generated_urls
+          }))
         });
 
         alert("图像生成并更新完毕，已显示在 AI 增强照片区");
@@ -1078,99 +1008,118 @@ export default {
       }
     },
     reselectText() {
-      this.highlightedTexts = []
-      this.userNarratives[this.currentStage] = ''
-      console.log('已清空用户口述内容')
+      this.highlightedTexts = [];
+      this.userNarratives[this.currentStage] = '';
+      console.log('已清空用户口述内容');
     },
-    // ✅ [修改] 重构 showTextInput 以接收 key
     showTextInput(index, questionListKey) {
-      // questionListKey 是 'questions' (S2) 或 'stage4Questions' (S4)
       const questions = this[questionListKey];
       if (questions && questions[index]) {
         questions[index].showInput = true;
       }
     },
-    // ✅ [修改] 重构 skipQuestion 以接收 key
     skipQuestion(index, questionListKey) {
       const questions = this[questionListKey];
       if (!questions || !questions[index]) return;
-
       questions[index].answered = true;
-      
-      // 寻找下一个未回答问题
+
       const nextIndex = questions.findIndex((q, i) => i > index && !q.answered);
       if (nextIndex !== -1) {
         this.currentQuestionIndex = nextIndex;
       } else {
-        // 如果后面没有了，就留在原地
         this.currentQuestionIndex = index;
       }
+
+      // ✅ 补 now + 记录
+      const now = new Date().toISOString();
+      const record = {
+        stage: this.currentStage,
+        index,
+        question: questions[index].text,
+        action: 'skipped',
+        skipTime: now
+      };
+      if (this.currentStage === 2) this.stage2QA.push(record);
+      else if (this.currentStage === 4) this.stage4QA.push(record);
     },
-    // 处理用户回答问题
-    // ✅ [修改] 重构 submitAnswer 以接收 key
     submitAnswer(index, questionListKey) {
       const questions = this[questionListKey];
       if (!questions || !questions[index]) return;
-      
       const question = questions[index];
-      if (!question.answer.trim()) return; // 如果答案为空不提交
+      if (!question.answer?.trim()) return;
+
+      // ✅ 补 now
+      const now = new Date().toISOString();
 
       question.answered = true;
       question.answer = question.answer.trim();
-      question.showInput = false; // 关闭当前输入框
+      question.showInput = false;
 
-      // 自动切换到下一个未回答的问题
-      // for (let i = index + 1; i < this.questions.length; i++) {
-      //   if (!this.questions[i].answered) {
-      //     this.currentQuestionIndex = i;
-      //     return;
-      //   }
-      // }
-      const nextIndex = questions.findIndex((q, i) => i > index && !q.answered);
-      if (nextIndex !== -1) {
-        this.currentQuestionIndex = nextIndex;
-      } else {
-         // 如果所有问题都已回答，则保持最后一个
-        this.currentQuestionIndex = index;
+      // ✅ 记录 QA
+      const record = {
+        stage: this.currentStage,
+        index,
+        question: question.text,
+        answer: question.answer,
+        answerTime: now
+      };
+
+      if (this.currentStage === 2) {
+        const existing = this.stage2QA.find(r => r.index === index);
+        if (existing) {
+          existing.answer = question.answer;
+          existing.answerTime = now;
+        } else {
+          this.stage2QA.push(record);
+        }
+      } else if (this.currentStage === 4) {
+        const existing = this.stage4QA.find(r => r.index === index);
+        if (existing) {
+          existing.answer = question.answer;
+          existing.answerTime = now;
+        } else {
+          this.stage4QA.push(record);
+        }
       }
-    },
 
-    // --- ✅ (新增) Stage 4 方法 ---
-    
-    // ✅ (修改) 获取 Stage 4 问题 (根据新逻辑修改)
+      const nextIndex = questions.findIndex((q, i) => i > index && !q.answered);
+      this.currentQuestionIndex = nextIndex !== -1 ? nextIndex : index;
+    },
     async fetchStage4Questions() {
-      console.log('开始获取 Stage 4 问题...')
+      console.log('开始获取 Stage 4 问题...');
       if (this.currentStage !== 4) return;
 
       this.isFetchingS4Questions = true;
-      this.stage4Questions = []; // 清空旧问题
+      this.stage4Questions = [];
       try {
-        // 1. Convert original photos (File objects) to base64
         const base64Photos = await Promise.all(
           this.photos.map(photo => this.convertToBase64(photo.file))
         );
-        
-        // 2. ✅ [FIX] Convert AI photos (localhost URLs) to base64
         const aiPhotoBase64s = await Promise.all(
           this.aiPhotos.map(p => this.urlToBase64(p.url))
         );
-        
-        const aiPhotoURLs = aiPhotoBase64s.filter(Boolean); // Filter out any nulls from failed conversions
+        const aiPhotoURLs = aiPhotoBase64s.filter(Boolean);
 
         if (aiPhotoURLs.length === 0) {
-            alert("没有可供提问的 AI 图像，或无法读取 AI 图像 (CORS/Network error)");
-            this.isFetchingS4Questions = false;
-            return;
+          alert("没有可供提问的 AI 图像，或无法读取 AI 图像 (CORS/Network error)");
+          this.isFetchingS4Questions = false;
+          return;
         }
 
         const response = await axios.post('http://127.0.0.1:5000/generate-stage4-questions', {
           original_photos: base64Photos,
-          ai_photos_urls: aiPhotoURLs, // ✅ Now sending base64 data URLs
-          // ✅ [Note] The server.py route already expects 'suggestion' to be missing
+          ai_photos_urls: aiPhotoURLs,
         });
 
         this.stage4Questions = response.data.questions || [];
-        this.currentQuestionIndex = 0; // 重置问题索引
+        this.currentQuestionIndex = 0;
+
+        this.stage4QA = this.stage4Questions.map((q, idx) => ({
+          stage: 4,
+          index: idx,
+          question: q.text,
+          fetchedTime: new Date().toISOString()
+        }));
       } catch (error) {
         console.error("Error fetching stage 4 questions:", error);
         alert("获取 Stage 4 问题失败，请查看控制台");
@@ -1178,43 +1127,36 @@ export default {
         this.isFetchingS4Questions = false;
       }
     },
-
-    // ✅ (新增 Stage 4) 更新文本
     async updateText() {
       if (this.currentStage !== 4) return;
-
       const qa_pairs = (this.stage4Questions || [])
         .filter(q => q.answered && q.answer && q.answer.trim())
         .map(q => ({ question: q.text, answer: q.answer.trim() }));
-
       if (qa_pairs.length === 0) {
         alert("没有可供更新的回答，请先回答 Stage 4 的引导问题。");
         return;
       }
- 
-      console.log("准备发往 /update-text 的 payload:", { 
-        current_narrative: this.assistantIntegratedText, // 发送黑字基础
-        new_qa_pairs: qa_pairs 
+
+      console.log("准备发往 /update-text 的 payload:", {
+        current_narrative: this.assistantIntegratedText,
+        new_qa_pairs: qa_pairs
       });
 
       try {
         this.isUpdatingText = true;
-        this.assistantUpdatedText = ''; // 清空旧的紫字
-
+        this.assistantUpdatedText = '';
         const resp = await axios.post('http://127.0.0.1:5000/update-text', {
           current_narrative: this.assistantIntegratedText,
           new_qa_pairs: qa_pairs
         }, { timeout: 120000 });
 
         if (resp.data && resp.data.updated_text) {
-          // 只把*新*结果写进 assistantUpdatedText (紫色文本)
           this.assistantUpdatedText = String(resp.data.updated_text).trim();
           this.$message?.success?.("文本更新完成，已在 AI 面板显示（紫色）");
         } else {
           console.error("update-text 返回结构异常：", resp.data);
           alert("文本更新失败，请查看后端日志");
         }
-
       } catch (err) {
         console.error("更新文本错误：", err);
         alert("更新文本时出错，请查看控制台或后端日志");
@@ -1222,48 +1164,37 @@ export default {
         this.isUpdatingText = false;
       }
     },
-    
-    // ✅ [修改] 图像更新 (根据 S3 逻辑，用于 "新一轮图像更新")
     async generateNewImagesFromNarrative() {
-      if (this.iterationCount > this.maxIterations) { // ✅ [修改] 检查
+      if (this.iterationCount > this.maxIterations) {
         alert("已达到最大迭代次数！");
-        this.iterationStopped = true; // 自动终止
+        this.iterationStopped = true;
         return;
       }
-      
+
       console.log('S4: 开始根据更新后的叙事文本生成新图片...');
-      
-      // ✅ 关键：Stage 4 使用合并后的完整叙事
-      const narrative = (this.assistantIntegratedText + '\n' + this.assistantUpdatedText).trim(); 
-      
-      if (!narrative || !this.assistantUpdatedText) { // ✅ 必须有新文本
+      const narrative = (this.assistantIntegratedText + '\n' + this.assistantUpdatedText).trim(); // ✅ 修正为 '\n'
+
+      if (!narrative || !this.assistantUpdatedText) {
         alert("AI 叙事没有更新，请先回答问题并[整合文本]");
         return;
       }
-      
+
       try {
         const base64Photos = await Promise.all(
           this.photos.map(photo => this.convertToBase64(photo.file))
         );
         const response = await axios.post('http://127.0.0.1:5000/generate-prompts', {
           photos: base64Photos,
-          narrative: narrative, // 使用合并后的 narrative
+          narrative: narrative,
         });
 
         let newSentencePairs = response.data.sentence_pairs || [];
-        console.log('S4 图文配对结果：', toRaw(newSentencePairs));
-
-        // ✅ [修改] 只过滤新 prompt，并限制数量
         const toGenerate = newSentencePairs.filter(p => p.prompt);
-        const limitedToGenerate = toGenerate.slice(0, 2); // ✅ 限制 2 张
-        
-        console.log(`S4: 找到 ${toGenerate.length} 个新 prompt，将生成 ${limitedToGenerate.length} 张。`);
+        const limitedToGenerate = toGenerate.slice(0, 2);
 
-        if (!limitedToGenerate.length) {
-          console.log("S4: 没有需要生成的 new prompt，跳过");
-        } else {
+        if (limitedToGenerate.length > 0) {
           const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
-            sentence_pairs: limitedToGenerate // ✅ 发送限制后的列表
+            sentence_pairs: limitedToGenerate
           }, { timeout: 600000 });
 
           if (!(genResp.data && genResp.data.results)) {
@@ -1273,91 +1204,101 @@ export default {
           }
 
           const results = genResp.data.results;
-          console.log("S4 生成图片结果：", results);
-
           const BACKEND_BASE = "http://127.0.0.1:5000";
 
+          const beforeNarrative = this.assistantIntegratedText;
+          const beforePhotos = [...this.aiPhotos.map(p => ({ url: p.url, prompt: p.prompt }))];
+
           results.forEach(res => {
-            const idx = res.index; // 这个 index 对应 limitedToGenerate 的索引
-            const originalPair = limitedToGenerate[idx]; // 获取原始 pair
-            
+            const idx = res.index;
+            const originalPair = limitedToGenerate[idx];
             const urls = res.generated_urls || [];
             if (!urls.length) return;
             let firstUrl = urls[0];
-
             if (firstUrl.startsWith("/")) {
               firstUrl = BACKEND_BASE + firstUrl;
             } else if (!firstUrl.startsWith("http://") && !firstUrl.startsWith("https://")) {
               firstUrl = BACKEND_BASE + "/static/generated/" + firstUrl;
             }
-            
+
             const aiObj = {
-              file: null, url: firstUrl,
+              file: null,
+              url: firstUrl,
               name: `ai_generated_s4_${Date.now()}.jpg`,
-              prompt: res.prompt || originalPair?.prompt || null, // ✅ 保存 prompt
-              iterationLabel: `Iter ${this.iterationCount}` // ✅ [新增] 迭代标签
+              prompt: res.prompt || originalPair?.prompt || null,
+              iterationLabel: `Iter ${this.iterationCount}`
             };
-            
-            this.aiPhotos.push(aiObj); // ✅ [修改] 追加到末尾
+
+            this.aiPhotos.push(aiObj);
+
+            // ✅ 单图生成记录
+            this.aiPhotosHistory.push({
+              timestamp: new Date().toISOString(),
+              type: 'iteration',
+              iterationLabel: `Iter ${this.iterationCount}`,
+              index: idx,
+              prompt: aiObj.prompt,
+              url: aiObj.url
+            });
           });
-          
-          console.log(`S4: ${results.length} 张图像追加完毕`);
-        }
-        
-        // --- ✅ [新增] 迭代收尾工作 ---
-        // 1. 将上一轮的“紫色更新” (UpdatedText) 合并到“黑色基础” (IntegratedText)
-        this.assistantIntegratedText = (this.assistantIntegratedText + '\n' + this.assistantUpdatedText).trim();
-        // 2. 增加迭代次数
-        this.iterationCount += 1;
-        // 3. 清空上一轮的 Stage 4 状态，准备新一轮
-        this.assistantUpdatedText = '';
-        this.aiSuggestion = '';
-        this.stage4Questions = [];
-        this.currentQuestionIndex = 0;
 
-        console.log(`开始第 ${ this.iterationCount} 轮迭代`);
+          // 迭代收尾
+          this.assistantIntegratedText = (this.assistantIntegratedText + '\n' + this.assistantUpdatedText).trim(); // ✅ 修正为 '\n'
+          this.iterationCount += 1;
+          this.assistantUpdatedText = '';
+          this.aiSuggestion = '';
+          this.stage4Questions = [];
+          this.currentQuestionIndex = 0;
 
-        if (this.iterationCount > this.maxIterations) {
-          console.log("已完成最后一轮迭代，自动终止。");
-          this.iterationStopped = true;
+          const afterNarrative = this.assistantIntegratedText;
+          const afterPhotos = [...this.aiPhotos.map(p => ({ url: p.url, prompt: p.prompt }))];
+
+          // ✅ 记录迭代事件
+          this.stage4Iterations.push({
+            iterNum: this.iterationCount - 1,
+            time: new Date().toISOString(),
+            trigger: 'auto',
+            narrativeBefore: beforeNarrative,
+            narrativeAfter: afterNarrative,
+            photosBefore: beforePhotos,
+            photosAfter: afterPhotos,
+            newPrompts: limitedToGenerate.map(p => p.prompt),
+            generatedCount: results.length
+          });
+
+          if (this.iterationCount > this.maxIterations) {
+            this.iterationStopped = true;
+          }
         }
-        // --- 结束 ---
-        
       } catch (error) {
         console.error("Error in generateNewImagesFromNarrative:", error);
         alert("S4: 根据叙事更新图像时出错，请查看控制台");
       }
     },
-
-    // ✅ [修改] 图像更新 (根据用户建议)
     async submitIndividualPhotoUpdate() {
       const index = this.suggestionForPhotoIndex;
       const suggestion = this.currentSuggestionText.trim();
-      
       if (index === null || !suggestion) return;
-      
       const photo = this.aiPhotos[index];
       if (!photo || !photo.prompt) {
         alert("未找到原始 Prompt，无法更新。");
         return;
       }
-      
+
       console.log(`S4: 开始根据建议 "${suggestion}" 修改照片 ${index} (a.k.a. ${this.getLetterIndex(index)})...`);
       this.isUpdatingPhoto = true;
-      
-      // 1. 手动构建 sentence_pairs
+
       const manual_sentence_pairs = [{
-          index: 0, // 总是 0，因为我们只发了一张
-          prompt: `${photo.prompt}, ${suggestion}`, // 附加建议
-          photo: null 
+        index: 0,
+        prompt: `${photo.prompt}, ${suggestion}`,
+        photo: null
       }];
-      
-      // 2. 调用 /generate-images
+
       try {
         const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
           sentence_pairs: manual_sentence_pairs
         }, { timeout: 600000 });
-        
+
         if (!(genResp.data && genResp.data.results && genResp.data.results.length > 0)) {
           console.error("S4 submitIndividualPhotoUpdate 返回异常：", genResp.data);
           alert("根据建议更新图片时出错，请查看控制台");
@@ -1365,82 +1306,132 @@ export default {
           return;
         }
 
-        const result = genResp.data.results[0]; // 只取第一个
-        
+        const result = genResp.data.results[0];
         const urls = result.generated_urls || [];
         if (!urls.length) {
-           alert("AI 未能生成图片，请重试");
-           this.isUpdatingPhoto = false;
-           return;
+          alert("AI 未能生成图片，请重试");
+          this.isUpdatingPhoto = false;
+          return;
         }
 
         let firstUrl = urls[0];
+        const BACKEND_BASE = "http://127.0.0.1:5000";
         if (firstUrl.startsWith("/")) {
           firstUrl = BACKEND_BASE + firstUrl;
         } else if (!firstUrl.startsWith("http://") && !firstUrl.startsWith("https://")) {
           firstUrl = BACKEND_BASE + "/static/generated/" + firstUrl;
         }
-        
-        // 3. 原地替换 aiPhotos
+
         const updatedAiObj = {
-          ...this.aiPhotos[index], // 保留旧信息
-          url: firstUrl, // 更新 URL
-          prompt: result.prompt, // 更新为修改后的 Prompt
+          ...this.aiPhotos[index],
+          url: firstUrl,
+          prompt: result.prompt,
           name: `ai_modified_${Date.now()}_${index}.jpg`,
         };
-        
-        // 使用 $set 或 slice 确保响应性
+
         this.$set(this.aiPhotos, index, updatedAiObj);
-        
+
+        // ✅ 记录修改
+        this.stage4Modifications.push({
+          time: new Date().toISOString(),
+          photoIndex: index,
+          photoLabel: this.getLetterIndex(index),
+          oldUrl: photo.url,
+          newUrl: updatedAiObj.url,
+          suggestion: suggestion,
+          oldPrompt: photo.prompt,
+          newPrompt: updatedAiObj.prompt
+        });
+
+        // ✅ 记录生成
+        this.aiPhotosHistory.push({
+          timestamp: new Date().toISOString(),
+          type: 'manual',
+          photoIndex: index,
+          oldUrl: photo.url,
+          newUrl: updatedAiObj.url,
+          suggestion: suggestion,
+          prompt: updatedAiObj.prompt
+        });
+
         alert(`照片 ${this.getLetterIndex(index)} 更新完毕！`);
-        
       } catch (error) {
-         console.error("Error in submitIndividualPhotoUpdate:", error);
-         alert("S4: 根据建议更新图像时出错，请查看控制台");
+        console.error("Error in submitIndividualPhotoUpdate:", error);
+        alert("S4: 根据建议更新图像时出错，请查看控制台");
       } finally {
         this.isUpdatingPhoto = false;
-        this.showSuggestionModal = false; // 关闭模态框
+        this.showSuggestionModal = false;
       }
     },
-    
-    // --- ✅ [新增] Req 1 模态框 ---
     openSuggestionModal(index) {
       this.suggestionForPhotoIndex = index;
-      this.currentSuggestionText = ''; // 清空
+      this.currentSuggestionText = '';
       this.showSuggestionModal = true;
     },
-    
-    // --- ✅ [新增] Req 1 拖拽方法 ---
     startResizeAiResult(e) {
-      this.isResizingAiResult = true
-      this.startY_ai = e.clientY
-      this.startHeight_ai = this.aiResultHeight
-      document.addEventListener('mousemove', this.doResizeAiResult)
-      document.addEventListener('mouseup', this.stopResizeAiResult)
+      this.isResizingAiResult = true;
+      this.startY_ai = e.clientY;
+      this.startHeight_ai = this.aiResultHeight;
+      document.addEventListener('mousemove', this.doResizeAiResult);
+      document.addEventListener('mouseup', this.stopResizeAiResult);
     },
     doResizeAiResult(e) {
-      if (!this.isResizingAiResult) return
-      const diff = e.clientY - this.startY_ai
-      const newHeight = Math.min(Math.max(100, this.startHeight_ai + diff), 400) // 100px min, 400px max
-      this.aiResultHeight = newHeight
+      if (!this.isResizingAiResult) return;
+      const diff = e.clientY - this.startY_ai;
+      const newHeight = Math.min(Math.max(100, this.startHeight_ai + diff), 400);
+      this.aiResultHeight = newHeight;
     },
     stopResizeAiResult() {
-      this.isResizingAiResult = false
-      document.removeEventListener('mousemove', this.doResizeAiResult)
-      document.removeEventListener('mouseup', this.stopResizeAiResult)
+      this.isResizingAiResult = false;
+      document.removeEventListener('mousemove', this.doResizeAiResult);
+      document.removeEventListener('mouseup', this.stopResizeAiResult);
     },
-    
-    // --- ✅ [新增] Req 2 终止迭代 ---
     stopIteration() {
       this.iterationStopped = true;
       console.log("用户终止迭代");
     },
-    
-    // --- ✅ [新增] Req 4 编号 ---
     getLetterIndex(idx) {
-      return String.fromCharCode(97 + idx); // 97 = 'a'
+      return String.fromCharCode(97 + idx);
+    },
+    async saveExperimentLog() {
+      try {
+        const logData = {
+          userId: this.userId,
+          sessionId: this.sessionId,
+          startTime: this.startTime,
+          endTime: new Date().toISOString(),
+          userAgent: this.userAgent,
+          screenResolution: this.screenResolution,
+          stageTimestamps: { ...this.stageTimestamps },
+          narratives: { ...this.userNarratives },
+          stage2QA: [...this.stage2QA],
+          stage4QA: [...this.stage4QA],
+          stage4Iterations: [...this.stage4Iterations],
+          stage4Modifications: [...this.stage4Modifications],
+          aiPhotosHistory: [...this.aiPhotosHistory],
+          originalPhotoUrls: this.photos.map(p => p.url).filter(Boolean),
+          aiPhotoUrls: this.aiPhotos.map(p => p.url).filter(Boolean),
+          aiPhotoMeta: this.aiPhotos.map(p => ({
+            url: p.url,
+            prompt: p.prompt,
+            iterationLabel: p.iterationLabel
+          }))
+        };
+
+        const resp = await axios.post('http://127.0.0.1:5000/save-experiment-log', {
+          log: logData
+        });
+
+        if (resp.data.success) {
+          alert(`✅ 实验日志已保存！\nSession ID: ${this.sessionId}`);
+        } else {
+          throw new Error(resp.data.message || '后端保存失败');
+        }
+      } catch (err) {
+        console.error('[Log Save Error]', err);
+        alert('❌ 实验日志保存失败，请重试\n' + (err.message || 'Unknown error'));
+      }
     }
-    // --- END Stage 4 ---
   }
 }
 </script>
