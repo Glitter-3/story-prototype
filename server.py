@@ -1,11 +1,15 @@
 import os
 import re
 import json
+from datetime import datetime
+import time
 import uuid
 import base64
 import requests
+import zipfile
 from pathlib import Path
-from kling import ImageGenerator
+from kling import ImageGenerator, MultiImage2Image
+from werkzeug.utils import secure_filename
 from urllib.parse import urlparse, unquote
 import string
 from flask import Flask, request, jsonify
@@ -22,22 +26,54 @@ GENERATED_DIR.mkdir(parents=True, exist_ok=True)
 # 定义后端对外访问的 base 地址（用于返回绝对 URL）
 BACKEND_BASE = "http://127.0.0.1:5000"
 
-# helper: 把 data:image/...;base64,... 写成文件，返回文件路径
+# # helper: 把 data:image/...;base64,... 写成文件，返回文件路径
+# def dataurl_to_file(dataurl, filename=None):
+#     """
+#     dataurl example: "data:image/jpeg;base64,/9j/4AAQ.."
+#     返回写好的文件路径（字符串）
+#     """
+#     m = re.match(r"data:(image/\w+);base64,(.*)", dataurl, re.S)
+#     if not m:
+#         raise ValueError("不是合法的 data URL")
+#     mime, b64 = m.groups()
+#     ext = mime.split('/')[-1]
+#     if not filename:
+#         filename = f"{uuid.uuid4().hex}.{ext}"
+#     out_path = GENERATED_DIR / filename
+#     with open(out_path, "wb") as f:
+#         f.write(base64.b64decode(b64))
+#     return str(out_path)
 def dataurl_to_file(dataurl, filename=None):
     """
     dataurl example: "data:image/jpeg;base64,/9j/4AAQ.."
     返回写好的文件路径（字符串）
     """
+    print(f"Attempting to convert data URL to file: {dataurl[:100]}...")  # 打印前100个字符
     m = re.match(r"data:(image/\w+);base64,(.*)", dataurl, re.S)
     if not m:
+        print("Invalid data URL format")
         raise ValueError("不是合法的 data URL")
+    
     mime, b64 = m.groups()
     ext = mime.split('/')[-1]
+    
     if not filename:
         filename = f"{uuid.uuid4().hex}.{ext}"
+    
     out_path = GENERATED_DIR / filename
-    with open(out_path, "wb") as f:
-        f.write(base64.b64decode(b64))
+    
+    # 检查路径是否存在，不存在则创建
+    if not GENERATED_DIR.exists():
+        GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        with open(out_path, "wb") as f:
+            f.write(base64.b64decode(b64))
+        print(f"File successfully written: {out_path}")
+    except Exception as e:
+        print(f"Error writing file: {e}")
+        raise
+    
     return str(out_path)
 
 # helper: 下载远程url到 static/generated 并返回本地相对路径（供前端访问）
@@ -81,16 +117,132 @@ def download_to_generated(url, filename=None):
         return None
 
 # 新增路由：/generate-images
+# @app.route('/generate-images', methods=['POST'])
+# def generate_images():
+#     """
+#     接收前端传来的 sentence_pairs（同你前端控制台输出结构），
+#     对 prompt != null 的项逐条调用 kling ImageGenerator，等待结果，
+#     把返回的图片下载到 ./static/generated 并返回本地 URL 列表。
+#     请求体示例:
+#     {
+#       "sentence_pairs": [{ "photo": "...dataurl或null...", "sentence": "...", "prompt": "..." }, ...]
+#     }
+#     """
+#     try:
+#         payload = request.get_json()
+#         pairs = payload.get("sentence_pairs", [])
+#         # photos = payload.get("photos", [])
+#         if not pairs:
+#             return jsonify({"error": "no sentence_pairs"}), 400
+
+#         # 初始化 ImageGenerator
+#         # ig = ImageGenerator()  # 使用 kling.py 中的类；确保 ACCESS/SECRET 在 kling.py 已设置
+#         ig = MultiImage2Image()
+
+#         # 构造 Authorization header（kling 的示例中用 jwt）
+#         token = ig._encode_jwt_token()  # 直接利用类方法生成 token
+#         AUTHORIZATION = f"Bearer {token}"
+#         HEADERS = {"Content-Type": "application/json", "Authorization": AUTHORIZATION}
+
+#         results = []  # 收集每个 prompt 的返回信息
+
+#         for idx, item in enumerate(pairs):
+#             prompt = item.get("prompt")
+#             # ✅ [修改] 确保使用 item 中传递的 index（如果存在）
+#             item_index = item.get("index", idx) 
+            
+#             if not prompt:
+#                 # 跳过没有 prompt 的项（front-end 不需要生成）
+#                 results.append({"index": item_index, "prompt": None, "generated_urls": [], "note": "no prompt"})
+#                 continue
+
+#             # 如果该项自带 photo（data url），写成临时文件并传给 kling
+#             local_input_path = None
+#             photo = item.get("photo")
+
+#             if isinstance(photo, list) and photo:
+#                 subject_imgs = photo if photo else []
+#                 print(f"Item {item_index} has photo list, taking first element as style_photo.")
+#                 photo = photo[0] 
+
+#             print(f"Type of photo for item {item_index}: {type(photo)}")  # 打印 photo 的类型
+#             print(f"photo for item {item_index}: {photo[:100]}")  # 打印每个 item 的 photo 值
+
+#             if photo and isinstance(photo, str) and photo.startswith("data:"):
+#                 try:
+#                     print('{item_index}写入 dataurl 图片...')
+#                     local_input_path = dataurl_to_file(photo, filename=f"input_{uuid.uuid4().hex}.jpg")
+#                     print("{item_index}写入临时输入图片:", local_input_path)
+#                 except Exception as e:
+#                     print("写入 dataurl 失败:", e)
+#                     local_input_path = None
+
+#             # 调用 ImageGenerator.run（同步轮询）
+#             try:
+#                 task_result = ig.run(
+#                     headers=HEADERS,
+#                     prompt=prompt,
+#                     subject_imgs = subject_imgs,
+#                     style_img=local_input_path if local_input_path else "",
+#                     model_name="kling-v2",
+#                     n=1,
+#                     aspect_ratio="3:4",
+#                     max_wait=300,
+#                     interval=5
+#                 )
+#             except Exception as e:
+#                 print("调用 kling 失败:", e)
+#                 results.append({"index": item_index, "prompt": prompt, "generated_urls": [], "error": str(e)})
+#                 continue
+
+#             # 从 task_result 中提取图片 url（格式依赖 kling 返回的结构）
+#             generated_urls = []
+#             try:
+#                 data = task_result.get("data", {})
+#                 # 适配你 kling.py get_task_result 中返回的结构
+#                 imgs = data.get("task_result", {}).get("images", []) or []
+#                 for im in imgs:
+#                     # im 里通常包含 'url' 字段（远程可访问）
+#                     remote_url = im.get("url")
+#                     if not remote_url:
+#                         # 如果返回的是 base64 字符串字段（示例），可按需写入文件：
+#                         b64 = im.get("b64") or im.get("base64")
+#                         if b64:
+#                             # 写成文件并返回本地 url
+#                             try:
+#                                 fn = f"{uuid.uuid4().hex}.jpg"
+#                                 out_path = GENERATED_DIR / fn
+#                                 with open(out_path, "wb") as f:
+#                                     f.write(base64.b64decode(b64))
+#                                 generated_urls.append(f"{BACKEND_BASE}/static/generated/{out_path.name}")
+#                             except Exception as e:
+#                                 print("写入 base64 图片失败:", e)
+#                         continue
+
+#                     # 先尝试下载到本地静态目录（使用 safe filename）
+#                     local_url = download_to_generated(remote_url)
+#                     if local_url:
+#                         generated_urls.append(local_url)
+#                     else:
+#                         # 如果下载失败，仍然把远程 URL 返回给前端（前端可直接使用远端URL）
+#                         generated_urls.append(remote_url)
+
+#             except Exception as e:
+#                 print("解析生成结果失败:", e)
+
+#             results.append({"index": item_index, "prompt": prompt, "generated_urls": generated_urls})
+#         # 返回一个数组，前端按 index 对应处理
+#         return jsonify({"results": results})
+
+#     except Exception as e:
+#         print("generate-images 异常:", e)
+#         return jsonify({"error": str(e)}), 500
 @app.route('/generate-images', methods=['POST'])
 def generate_images():
     """
-    接收前端传来的 sentence_pairs（同你前端控制台输出结构），
-    对 prompt != null 的项逐条调用 kling ImageGenerator，等待结果，
-    把返回的图片下载到 ./static/generated 并返回本地 URL 列表。
-    请求体示例:
-    {
-      "sentence_pairs": [{ "photo": "...dataurl或null...", "sentence": "...", "prompt": "..." }, ...]
-    }
+    接收前端传来的 sentence_pairs，对 prompt != null 的项调用 MultiImage2Image 生成图片。
+    每个 item 的 photo 字段为 base64 字符串数组（参考图），取前4张作为 subject_imgs，
+    第1张同时作为 style_img（传入 style_img 参数）。
     """
     try:
         payload = request.get_json()
@@ -98,42 +250,80 @@ def generate_images():
         if not pairs:
             return jsonify({"error": "no sentence_pairs"}), 400
 
-        # 初始化 ImageGenerator
-        ig = ImageGenerator()  # 使用 kling.py 中的类；请确保 ACCESS/SECRET 在 kling.py 已设置
+        ig = MultiImage2Image()
 
-        # 构造 Authorization header（kling 的示例中用 jwt）
-        token = ig._encode_jwt_token()  # 直接利用类方法生成 token
+        token = ig._encode_jwt_token()
         AUTHORIZATION = f"Bearer {token}"
         HEADERS = {"Content-Type": "application/json", "Authorization": AUTHORIZATION}
 
-        results = []  # 收集每个 prompt 的返回信息
+        results = []
 
         for idx, item in enumerate(pairs):
             prompt = item.get("prompt")
-            # ✅ [修改] 确保使用 item 中传递的 index（如果存在）
-            item_index = item.get("index", idx) 
-            
+            item_index = item.get("index", idx)
+
             if not prompt:
-                # 跳过没有 prompt 的项（front-end 不需要生成）
                 results.append({"index": item_index, "prompt": None, "generated_urls": [], "note": "no prompt"})
                 continue
 
-            # 如果该项自带 photo（data url），写成临时文件并传给 kling
-            local_input_path = None
-            photo = item.get("photo")
-            if photo and isinstance(photo, str) and photo.startswith("data:"):
-                try:
-                    local_input_path = dataurl_to_file(photo, filename=f"input_{uuid.uuid4().hex}.jpg")
-                except Exception as e:
-                    print("写入 dataurl 失败:", e)
-                    local_input_path = None
+            # ✅【关键修改】处理 photo 数组：前端传的是 base64 字符串列表
+            photo_list = item.get("photo", [])  # List[str], each is base64 (data URL or pure b64)
+            if not isinstance(photo_list, list):
+                photo_list = []
 
-            # 调用 ImageGenerator.run（同步轮询）
+            # 若为空，无法生成（可灵要求至少2张主体图）
+            if len(photo_list) < 2:
+                results.append({
+                    "index": item_index,
+                    "prompt": prompt,
+                    "generated_urls": [],
+                    "error": "subject_imgs must contain at least 2 images"
+                })
+                continue
+
+            # 取前4张
+            subject_photo_list = photo_list[:4]  # 最多4张
+
+            # 转为可灵要求的 subject_image_list 格式：[{"subject_image": b64_str}, ...]
+            # 注意：可灵 API 支持纯 base64 字符串（无需 "data:image/..." 前缀），但若含 dataurl 需处理
+            def extract_base64(dataurl_or_b64: str) -> str:
+                if dataurl_or_b64.startswith("data:image"):
+                    # 截取 base64 部分（跳过 MIME 头）
+                    try:
+                        b64_part = dataurl_or_b64.split(",", 1)[1]
+                        return b64_part
+                    except IndexError:
+                        raise ValueError("Invalid data URL format")
+                else:
+                    # 假设已是纯 base64（可灵接受）
+                    return dataurl_or_b64
+
+            try:
+                # 构建 subject_imgs：list of dict {"subject_image": b64_str}
+                subject_imgs = [
+                    {"subject_image": extract_base64(img)} for img in subject_photo_list
+                ]
+
+                # style_img 使用第一张图的 base64 字符串（注意：是字符串，不是 dict）
+                style_img_b64 = extract_base64(subject_photo_list[0])
+                # 注意：MultiImage2Image.run() 中 style_img 传入的是字符串（支持 base64 或 URL）
+
+            except Exception as e:
+                results.append({
+                    "index": item_index,
+                    "prompt": prompt,
+                    "generated_urls": [],
+                    "error": f"photo preprocessing failed: {str(e)}"
+                })
+                continue
+
+            # ✅ 调用 MultiImage2Image.run()
             try:
                 task_result = ig.run(
                     headers=HEADERS,
                     prompt=prompt,
-                    image_path=local_input_path if local_input_path else "",
+                    subject_imgs=subject_imgs,         # ✔️ 已为正确格式
+                    style_img=style_img_b64,           # ✔️ 第一张图的 base64 字符串
                     model_name="kling-v2",
                     n=1,
                     aspect_ratio="3:4",
@@ -141,53 +331,49 @@ def generate_images():
                     interval=5
                 )
             except Exception as e:
-                print("调用 kling 失败:", e)
-                results.append({"index": item_index, "prompt": prompt, "generated_urls": [], "error": str(e)})
+                results.append({
+                    "index": item_index,
+                    "prompt": prompt,
+                    "generated_urls": [],
+                    "error": f"kling run failed: {str(e)}"
+                })
                 continue
 
-            # 从 task_result 中提取图片 url（格式依赖 kling 返回的结构）
+            # ✅ 提取结果
             generated_urls = []
             try:
                 data = task_result.get("data", {})
-                # 适配你 kling.py get_task_result 中返回的结构
                 imgs = data.get("task_result", {}).get("images", []) or []
                 for im in imgs:
-                    # im 里通常包含 'url' 字段（远程可访问）
                     remote_url = im.get("url")
-                    if not remote_url:
-                        # 如果返回的是 base64 字符串字段（示例），可按需写入文件：
+                    if remote_url:
+                        local_url = download_to_generated(remote_url)
+                        generated_urls.append(local_url or remote_url)
+                    else:
                         b64 = im.get("b64") or im.get("base64")
                         if b64:
-                            # 写成文件并返回本地 url
                             try:
                                 fn = f"{uuid.uuid4().hex}.jpg"
                                 out_path = GENERATED_DIR / fn
-                                with open(out_path, "wb") as f:
-                                    f.write(base64.b64decode(b64))
+                                out_path.write_bytes(base64.b64decode(b64))
                                 generated_urls.append(f"{BACKEND_BASE}/static/generated/{out_path.name}")
-                            except Exception as e:
-                                print("写入 base64 图片失败:", e)
-                        continue
-
-                    # 先尝试下载到本地静态目录（使用 safe filename）
-                    local_url = download_to_generated(remote_url)
-                    if local_url:
-                        generated_urls.append(local_url)
-                    else:
-                        # 如果下载失败，仍然把远程 URL 返回给前端（前端可直接使用远端URL）
-                        generated_urls.append(remote_url)
-
+                            except Exception as ex:
+                                print(f"Base64 save failed for item {item_index}:", ex)
             except Exception as e:
-                print("解析生成结果失败:", e)
+                print(f"Parse result failed for item {item_index}:", e)
 
-            results.append({"index": item_index, "prompt": prompt, "generated_urls": generated_urls})
-        # 返回一个数组，前端按 index 对应处理
+            results.append({
+                "index": item_index,
+                "prompt": prompt,
+                "generated_urls": generated_urls
+            })
+
         return jsonify({"results": results})
 
     except Exception as e:
-        print("generate-images 异常:", e)
+        print("generate-images exception:", e)
         return jsonify({"error": str(e)}), 500
-
+    
 
 # Qwen API Key 和 Base URL 配置
 API_KEY = "sk-fbdc82229399417892a94c001b5ea873" # 替换成自己的key
@@ -570,10 +756,169 @@ def generate_prompts():
         print("⚠️ (generate-prompts) /generate-prompts 异常:", e)
         return jsonify({"error": str(e)}), 500
 
+UPLOADS_DIR = Path(__file__).parent / "static" / "uploads"
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+@app.route('/upload-photo', methods=['POST'])
+def upload_photo():
+    try:
+        if 'photo' not in request.files:
+            return jsonify({"success": False, "message": "No photo provided"}), 400
+        file = request.files['photo']
+        if file.filename == '':
+            return jsonify({"success": False, "message": "Empty filename"}), 400
+        if file:
+            # 安全文件名
+            safe_name = secure_filename(file.filename)
+            if not safe_name:
+                safe_name = f"{uuid.uuid4().hex}.jpg"
+            # 添加时间戳防重
+            name = f"{int(time.time())}_{safe_name}"
+            filepath = UPLOADS_DIR / name
+            file.save(filepath)
+            url = f"/static/uploads/{name}"
+            return jsonify({"success": True, "url": url})
+    except Exception as e:
+        print("Upload error:", e)
+        return jsonify({"success": False, "message": str(e)}), 500
 
 
+LOGS_DIR = Path(__file__).parent / "experiment_logs"
+LOGS_DIR.mkdir(exist_ok=True)
+
+# 图像存储根目录（与 upload / generate-images 一致）
+UPLOADS_DIR = Path(__file__).parent / "static" / "uploads"
+GENERATED_DIR = Path(__file__).parent / "static" / "generated"
 
 
+@app.route('/save-experiment-log', methods=['POST'])
+def save_experiment_log():
+    try:
+        data = request.get_json()
+        log_data = data.get("log", {})
+
+        user_id = str(log_data.get("userId", "anonymous")).replace("/", "_").replace("\\", "_")
+        session_id = str(log_data.get("sessionId", "unknown")).replace("/", "_").replace("\\", "_")
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # 创建用户/会话专属目录
+        session_dir = LOGS_DIR / user_id / session_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+
+        # 1️⃣ 先保存精简版 JSON（不含图像数据）
+        # 移除大字段（若存在 base64），保留 URL 和 meta
+        clean_log = {
+            k: v for k, v in log_data.items()
+            if k not in ["originalPhotosBase64", "aiPhotosBase64"]
+        }
+
+        json_path = session_dir / f"log_{ts}.json"
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(clean_log, f, ensure_ascii=False, indent=2)
+
+        print(f"✅ Log JSON saved: {json_path.relative_to(LOGS_DIR)}")
+
+        # 2️⃣ 打包 assets.zip（含所有原始 & AI 图像）
+        zip_path = session_dir / f"assets_{ts}.zip"
+        assets_count = 0
+
+        try:
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                # -- 原始照片 --
+                orig_urls = log_data.get("originalPhotoUrls", [])
+                for i, url in enumerate(orig_urls):
+                    local_path = _resolve_local_path(url, UPLOADS_DIR)
+                    if local_path and local_path.exists():
+                        arcname = f"original_{i+1:02d}{local_path.suffix}"
+                        zf.write(local_path, arcname)
+                        assets_count += 1
+                    else:
+                        print(f"⚠️ Original photo #{i+1} not found: {url}")
+
+                # -- AI 生成照片 --
+                ai_urls = log_data.get("aiPhotoUrls", [])
+                ai_meta = log_data.get("aiPhotoMeta", [])
+                for i, url in enumerate(ai_urls):
+                    local_path = _resolve_local_path(url, GENERATED_DIR)
+                    if local_path and local_path.exists():
+                        # 尝试从 meta 取标签，否则用 index
+                        label = f"ai_{i+1:02d}"
+                        if i < len(ai_meta):
+                            iter_label = ai_meta[i].get("iterationLabel", "").replace(" ", "_")
+                            prompt_snippet = (ai_meta[i].get("prompt", "")[:30].replace("/", "_").replace("\\", "_") or "no_prompt")
+                            label = f"{label}_{iter_label}_{prompt_snippet}"
+                        arcname = f"{label}{local_path.suffix}"
+                        zf.write(local_path, arcname)
+                        assets_count += 1
+                    else:
+                        print(f"⚠️ AI photo #{i+1} not found: {url}")
+
+        except Exception as e:
+            print(f"❌ assets.zip creation failed: {e}")
+            zip_path.unlink(missing_ok=True)  # 删除残缺 zip
+            zip_path = None
+
+        # 3️⃣ 返回成功响应
+        response = {
+            "success": True,
+            "logJson": json_path.name,
+            "assetsZip": zip_path.name if zip_path else None,
+            "imageCount": assets_count
+        }
+
+        print(f"✅ Experiment session saved: user={user_id}, session={session_id}, images={assets_count}")
+        return jsonify(response)
+
+    except Exception as e:
+        print("❌ save-experiment-log error:", e)
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
+
+
+def _resolve_local_path(url: str, base_dir: Path) -> Path | None:
+    """
+    将前端传来的 URL（绝对/相对/本地）解析为服务器本地 Path
+    支持：
+      - http://127.0.0.1:5000/static/uploads/xxx.jpg
+      - /static/uploads/xxx.jpg
+      - blob:http://... (不可解析 → None)
+    """
+    if not url or not isinstance(url, str):
+        return None
+
+    # 忽略 blob URL（前端应在 save 前转为本地路径）
+    if url.startswith("blob:"):
+        return None
+
+    # 解析路径部分
+    try:
+        parsed = urlparse(url)
+        path = unquote(parsed.path)
+
+        # 移除 /static/ 前缀（如果存在）
+        if path.startswith("/static/"):
+            rel_path = path[len("/static/"):]
+        else:
+            rel_path = path.lstrip("/")
+
+        # 尝试拼接 base_dir (uploads 或 generated)
+        candidate = base_dir / rel_path
+        if candidate.exists() and candidate.is_file():
+            return candidate
+
+        # 备用：直接按文件名在 base_dir 下查找（防路径偏移）
+        filename = os.path.basename(rel_path)
+        if filename:
+            fallback = base_dir / filename
+            if fallback.exists() and fallback.is_file():
+                return fallback
+
+        return None
+    except Exception as e:
+        print(f"⚠️ _resolve_local_path error for {url}: {e}")
+        return None
 
 if __name__ == '__main__':
     app.run(debug=True, host='127.0.0.1', port=5000)
