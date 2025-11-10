@@ -1388,22 +1388,44 @@ export default {
       const index = this.suggestionForPhotoIndex;
       const suggestion = this.currentSuggestionText.trim();
       if (index === null || !suggestion) return;
+      
       const photo = this.aiPhotos[index];
       if (!photo || !photo.prompt) {
         alert("未找到原始 Prompt，无法更新。");
         return;
       }
 
-      console.log(`S4: 开始根据建议 "${suggestion}" 修改照片 ${index} (a.k.a. ${this.getLetterIndex(index)})...`);
+      console.log(`S4: 开始根据建议 "${suggestion}" 修改照片 ${index}...`);
       this.isUpdatingPhoto = true;
 
-      const manual_sentence_pairs = [{
-        index: 0,
-        prompt: `${photo.prompt}, ${suggestion}`,
-        photo: null
-      }];
-
       try {
+        // ✅ 关键修改：准备参考图片数组（取前4张原始照片的 base64）
+        const base64Photos = await Promise.all(
+          this.photos.slice(0, 4).map(p => this.convertToBase64(p.file))
+        );
+
+        // ✅ 构建正确的 subject_imgs 格式
+        const subject_imgs = base64Photos.map(b64 => {
+          // 提取纯 base64（移除 data:image/xxx;base64, 前缀）
+          const pureB64 = b64.includes(',') ? b64.split(',')[1] : b64;
+          return { "subject_image": pureB64 };
+        });
+
+        // ✅ style_img 使用第一张图片
+        const style_img_b64 = base64Photos[0].includes(',') 
+          ? base64Photos[0].split(',')[1] 
+          : base64Photos[0];
+
+        // ✅ 合成新 prompt（原 prompt + 建议）
+        const newPrompt = `${photo.prompt}, ${suggestion}`;
+
+        // ✅ 传递给后端的格式
+        const manual_sentence_pairs = [{
+          index: 0,
+          prompt: newPrompt,
+          photo: subject_imgs  // ✅ 传递参考图数组
+        }];
+
         const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
           sentence_pairs: manual_sentence_pairs
         }, { timeout: 600000 });
@@ -1411,7 +1433,6 @@ export default {
         if (!(genResp.data && genResp.data.results && genResp.data.results.length > 0)) {
           console.error("S4 submitIndividualPhotoUpdate 返回异常：", genResp.data);
           alert("根据建议更新图片时出错，请查看控制台");
-          this.isUpdatingPhoto = false;
           return;
         }
 
@@ -1419,10 +1440,10 @@ export default {
         const urls = result.generated_urls || [];
         if (!urls.length) {
           alert("AI 未能生成图片，请重试");
-          this.isUpdatingPhoto = false;
           return;
         }
 
+        // ✅ 更新 UI
         let firstUrl = urls[0];
         const BACKEND_BASE = "http://127.0.0.1:5000";
         if (firstUrl.startsWith("/")) {
@@ -1434,8 +1455,9 @@ export default {
         const updatedAiObj = {
           ...this.aiPhotos[index],
           url: firstUrl,
-          prompt: result.prompt,
+          prompt: newPrompt,
           name: `ai_modified_${Date.now()}_${index}.jpg`,
+          iterationLabel: `Manual_${this.iterationCount}`
         };
 
         this.$set(this.aiPhotos, index, updatedAiObj);
@@ -1449,10 +1471,9 @@ export default {
           newUrl: updatedAiObj.url,
           suggestion: suggestion,
           oldPrompt: photo.prompt,
-          newPrompt: updatedAiObj.prompt
+          newPrompt: newPrompt
         });
 
-        // ✅ 记录生成
         this.aiPhotosHistory.push({
           timestamp: new Date().toISOString(),
           type: 'manual',
@@ -1460,7 +1481,7 @@ export default {
           oldUrl: photo.url,
           newUrl: updatedAiObj.url,
           suggestion: suggestion,
-          prompt: updatedAiObj.prompt
+          prompt: newPrompt
         });
 
         alert(`照片 ${this.getLetterIndex(index)} 更新完毕！`);
