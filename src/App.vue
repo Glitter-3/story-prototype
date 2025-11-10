@@ -219,6 +219,31 @@
         >
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-shrink: 0;">
             <strong>🧾 my photo story</strong>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <!-- 编辑/确认/取消 按钮（只在 Stage 3/4 时显示）-->
+              <template v-if="currentStage === 3 || currentStage === 4">
+                <!-- 当不在编辑模式并且有整合结果时，显示 修改 按钮 -->
+                <button
+                  v-if="!assistantEditMode && (assistantIntegratedText || assistantUpdatedText)"
+                  class="control-btn"
+                  @click="startEditAssistantText"
+                  style="padding:4px 8px; font-size:12px;"
+                >修改</button>
+
+                <!-- 编辑模式：显示 确认 和 取消 -->
+                <span v-if="assistantEditMode" style="display:flex; gap:6px;">
+                  <button class="control-btn primary" @click="confirmAssistantEdit" :disabled="isUpdatingText" style="padding: 4px 4px; font-size: 14px;">
+                    确认
+                  </button>
+                  <button class="control-btn primary" @click="cancelAssistantEdit" :disabled="isUpdatingText" style="padding: 4px 4px; font-size: 14px;">
+                    取消
+                  </button>
+                </span>
+
+                <!-- 若用户已手动编辑，提示小标签 -->
+                <span v-if="assistantEditedByUser" style="font-size:12px; color:#667eea; margin-left:6px;">已编辑</span>
+              </template>
+            </div>
             <button 
               v-if="currentStage === 4"
               class="control-btn"
@@ -234,13 +259,45 @@
             </div>
           </div>
           
-          <div v-if="assistantIntegratedText || assistantUpdatedText" style="white-space:pre-wrap; overflow:auto; color:#222; line-height:1.6; flex: 1;">
+          <div 
+            v-if="!assistantEditMode && (assistantIntegratedText || assistantUpdatedText)" 
+            style="white-space:pre-wrap; overflow:auto; color:#222; line-height:1.6; flex: 1; min-height: 0;"
+          >
             <span>{{ assistantIntegratedText }}</span>
-            <span v-if="assistantUpdatedText" style="color:#667eea; margin-top: 5px; display: inline-block;">
+            <span 
+              v-if="assistantUpdatedText" 
+              style="color:#667eea; margin-top: 5px; display: inline-block;"
+            >
               {{ assistantUpdatedText }}
             </span>
           </div>
-          <div v-else style="color:#888; font-size:13px;">
+
+          <!-- 编辑态：textarea -->
+          <div 
+            v-else-if="assistantEditMode" 
+            style="flex: 1; display: flex; flex-direction: column; min-height: 0;"
+          >
+            <textarea
+              v-model="assistantEditBuffer"
+              rows="6"
+              style="
+                flex: 1; 
+                font-size: 14px; 
+                padding: 10px; 
+                border: 1px solid #ccc; 
+                border-radius: 4px; 
+                resize: vertical;
+                min-height: 0;
+              "
+              placeholder="请在此编辑整合后的照片故事……"
+            ></textarea>
+          </div>
+
+          <!-- 兜底：尚无整合结果 -->
+          <div 
+            v-else 
+            style="color:#888; font-size:13px; flex: 1; display: flex; align-items: center;"
+          >
             尚无整合结果，点击下方「整合文本」或回答问题后再试
           </div>
           
@@ -437,6 +494,11 @@ export default {
       suggestionForPhotoIndex: null,
       currentSuggestionText: '',
       isUpdatingPhoto: false,
+      // stage 3&4 整合文本用户修改功能
+      assistantEditMode: false,        // 是否处于编辑模式（显示 textarea）
+      assistantEditBuffer: '',        // 编辑缓冲文本（textarea 的 v-model）
+      assistantEditedByUser: false,   // 标记用户是否已手动编辑过 AI 文本
+      stage3Modifications: [],        // 记录 Stage3 的每次用户修改（timestamp, before, after）
     }
   },
   computed: {
@@ -1085,6 +1147,53 @@ export default {
       const nextIndex = questions.findIndex((q, i) => i > index && !q.answered);
       this.currentQuestionIndex = nextIndex !== -1 ? nextIndex : index;
     },
+    // 进入编辑模式
+    startEditAssistantText() {
+      // 编辑内容 = 当前整合文本 + 更新文本（拼接，保留用户 Stage4 修改）
+      const currentText = (this.assistantIntegratedText + '\n' + (this.assistantUpdatedText || '')).trim();
+      this._assistantBeforeEdit = this.assistantIntegratedText; // 备份原值
+      this.assistantEditBuffer = currentText;
+      this.assistantEditMode = true;
+      this.$nextTick(() => {
+        // 自动聚焦（可选）
+        const textarea = this.$el.querySelector('textarea');
+        if (textarea) textarea.focus();
+      });
+    },
+
+    // 取消编辑，恢复原样
+    cancelAssistantEdit() {
+      this.assistantEditMode = false;
+      this.assistantEditBuffer = '';
+      delete this._assistantBeforeEdit;
+    },
+
+    // ✅ 核心：确认编辑 → 更新 assistantIntegratedText，并清空更新缓冲
+    confirmAssistantEdit() {
+      if (!this.assistantEditBuffer.trim()) {
+        alert('内容不能为空');
+        return;
+      }
+      // 将编辑后文本 → 覆盖原整合文本
+      const beforeText = this._assistantBeforeEdit || " "; 
+      this.assistantIntegratedText = this.assistantEditBuffer.trim();
+      // 清空 "更新文本"（因为已合并进主文本）
+      this.assistantUpdatedText = '';
+      // 退出编辑模式
+      this.assistantEditMode = false;
+      this.assistantEditBuffer = '';
+      // 标记用户主动编辑过（可用于日志/提示）
+      this.assistantEditedByUser = true;
+
+      // ✅【关键】记录用户修改（用于实验日志）
+      this.stage3Modifications.push({
+        timestamp: new Date().toISOString(),
+        before: beforeText, // 注意：此时 before 是旧的，应提前备份
+        after: this.assistantEditBuffer.trim()
+      });
+
+      this.$message?.success?.('整合文本已更新');
+    },
     async fetchStage4Questions() {
       console.log('开始获取 Stage 4 问题...');
       if (this.currentStage !== 4) return;
@@ -1406,6 +1515,7 @@ export default {
           narratives: { ...this.userNarratives },
           stage2QA: [...this.stage2QA],
           stage4QA: [...this.stage4QA],
+          stage3Modifications: [...this.stage3Modifications],
           stage4Iterations: [...this.stage4Iterations],
           stage4Modifications: [...this.stage4Modifications],
           aiPhotosHistory: [...this.aiPhotosHistory],
