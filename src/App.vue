@@ -99,7 +99,10 @@
               <div class="split-title">🪄 AI 增强照片</div>
               <div class="photo-grid ai-photo-grid">
                 <div class="photo-slot-ai" v-for="(ap, idx) in aiPhotos" :key="'ai-'+idx">
-                  <div class="photo-placeholder ai-placeholder" @click="onClickAiSlot(idx)">
+                  <div class="photo-placeholder ai-placeholder" 
+                       @click="onClickAiSlot(idx)"
+                       @mouseover="onPhotoHover(idx)"
+                       @mouseleave="onPhotoLeave">
                     <span class="ai-photo-label">{{ getLetterIndex(idx) }}</span>
                     <span v-if="ap.iterationLabel" class="ai-photo-iter-label">{{ ap.iterationLabel }}</span>
                     <template v-if="ap.url">
@@ -114,8 +117,7 @@
                     v-if="currentStage === 4" 
                     class="edit-photo-btn" 
                     @click="openSuggestionModal(idx)"
-                    :disabled="iterationStopped || iterationCount > maxIterations">
-                    ✏️ 建议
+                    :disabled="iterationStopped"> ✏️ 建议
                   </button>
                 </div>
               </div>
@@ -203,7 +205,7 @@
             <div class="progress-fill" :style="{ width: progressPercentage + '%' }"></div>
           </div>
           <span class="progress-text" v-if="currentStage === 4">
-             已迭代 {{ iterationCount }} / {{ maxIterations }} 轮
+             已迭代 {{ iterationCount - 1 }} 轮
           </span>
           <span class="progress-text" v-if="currentStage === 2">
             {{ answeredCount }}/{{ questions.length }} 问题已回答
@@ -220,9 +222,7 @@
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-shrink: 0;">
             <strong>🧾 my photo story</strong>
             <div style="display:flex; gap:8px; align-items:center;">
-              <!-- 编辑/确认/取消 按钮（只在 Stage 3/4 时显示）-->
               <template v-if="currentStage === 3 || currentStage === 4">
-                <!-- 当不在编辑模式并且有整合结果时，显示 修改 按钮 -->
                 <button
                   v-if="!assistantEditMode && (assistantIntegratedText || assistantUpdatedText)"
                   class="control-btn"
@@ -230,7 +230,6 @@
                   style="padding:4px 8px; font-size:12px;"
                 >修改</button>
 
-                <!-- 编辑模式：显示 确认 和 取消 -->
                 <span v-if="assistantEditMode" style="display:flex; gap:6px;">
                   <button class="control-btn primary" @click="confirmAssistantEdit" :disabled="isUpdatingText" style="padding: 4px 4px; font-size: 14px;">
                     确认
@@ -240,7 +239,6 @@
                   </button>
                 </span>
 
-                <!-- 若用户已手动编辑，提示小标签 -->
                 <span v-if="assistantEditedByUser" style="font-size:12px; color:#667eea; margin-left:6px;">已编辑</span>
               </template>
             </div>
@@ -248,8 +246,7 @@
               v-if="currentStage === 4"
               class="control-btn"
               @click="generateNewImagesFromNarrative"
-              :disabled="iterationStopped || iterationCount > maxIterations || !assistantUpdatedText"
-              title="根据新的叙事文本（紫色部分）生成新图片"
+              :disabled="iterationStopped || !assistantUpdatedText" title="根据新的叙事文本（紫色部分）生成新图片"
               style="padding: 4px 8px; font-size: 12px;">
               新一轮图像更新
             </button>
@@ -261,18 +258,11 @@
           
           <div 
             v-if="!assistantEditMode && (assistantIntegratedText || assistantUpdatedText)" 
+            v-html="highlightedStoryText"
             style="white-space:pre-wrap; overflow:auto; color:#222; line-height:1.6; flex: 1; min-height: 0;"
           >
-            <span>{{ assistantIntegratedText }}</span>
-            <span 
-              v-if="assistantUpdatedText" 
-              style="color:#667eea; margin-top: 5px; display: inline-block;"
-            >
-              {{ assistantUpdatedText }}
-            </span>
-          </div>
+            </div>
 
-          <!-- 编辑态：textarea -->
           <div 
             v-else-if="assistantEditMode" 
             style="flex: 1; display: flex; flex-direction: column; min-height: 0;"
@@ -293,7 +283,6 @@
             ></textarea>
           </div>
 
-          <!-- 兜底：尚无整合结果 -->
           <div 
             v-else 
             style="color:#888; font-size:13px; flex: 1; display: flex; align-items: center;"
@@ -313,8 +302,7 @@
           <button 
             class="control-btn" 
             @click="fetchStage4Questions" 
-            :disabled="isFetchingS4Questions || iterationStopped || iterationCount > maxIterations"
-            style="width: 100%; margin-bottom: 10px;"
+            :disabled="isFetchingS4Questions || iterationStopped" style="width: 100%; margin-bottom: 10px;"
           >
             {{ isFetchingS4Questions ? '获取中...' : '获取新一轮提问' }} </button>
         </div>
@@ -393,9 +381,8 @@
           <button 
             class="control-btn" 
             @click="stopIteration" 
-            style="margin: 0; background: #f5f5f5; width: 100%;" :disabled="iterationStopped || iterationCount > maxIterations"
-            >
-            已满意，终止迭代
+            style="margin: 0; background: #f5f5f5; width: 100%;" 
+            :disabled="iterationStopped"> 已满意，终止迭代
           </button>
         </div>
 
@@ -408,8 +395,7 @@
 
         <button 
           v-if="currentStage === 3 || (currentStage === 4 && stage4Questions.length > 0 && answeredCount > 0)" class="control-btn primary"
-          :disabled="integrating || isUpdatingText || iterationStopped || iterationCount > maxIterations"
-          @click="currentStage === 3 ? integrateText() : updateText()">
+          :disabled="integrating || isUpdatingText || iterationStopped" @click="currentStage === 3 ? integrateText() : updateText()">
           {{ integrating ? '整合中...' : (isUpdatingText ? '更新中...' : (currentStage === 3 ? '整合文本' : '整合文本')) }}
         </button>
         
@@ -464,7 +450,7 @@ export default {
       isResizing: false,
       aiVideo: { url: '' },
       iterationCount: 1,
-      maxIterations: 3,
+      // maxIterations: 3, // ✅ [修改 B.1] 移除
       startY: 0,
       startHeight: 0,
       highlightedTexts: [],
@@ -499,12 +485,39 @@ export default {
       assistantEditBuffer: '',        // 编辑缓冲文本（textarea 的 v-model）
       assistantEditedByUser: false,   // 标记用户是否已手动编辑过 AI 文本
       stage3Modifications: [],        // 记录 Stage3 的每次用户修改（timestamp, before, after）
+      
+      highlightedSentence: null, // ✅ [修改 C.2] 新增高亮状态
     }
   },
   computed: {
+    // ✅ [修改 C.5] 新增 computed 属性用于高亮
+    highlightedStoryText() {
+      // Get base texts and escape them for security before v-html
+      let text = this.escapeHtml(this.assistantIntegratedText || '');
+      const updatedText = this.escapeHtml(this.assistantUpdatedText || '');
+      
+      // Apply highlight if a sentence is hovered
+      if (this.highlightedSentence) {
+        const sentence = this.escapeHtml(this.highlightedSentence);
+        // Must escape the sentence for the regex to handle special chars
+        const regex = new RegExp(this.escapeRegExp(sentence), 'g'); // 'g' for all occurrences
+        // Use inline style for simplicity, avoiding scoped CSS issues with v-html
+        text = text.replace(regex, `<span style="background-color: #fff8c4; border-radius: 3px; padding: 1px 0;">${sentence}</span>`);
+      }
+      
+      // Append the (already styled) updated text
+      if (updatedText) {
+        // Re-add the purple color span for the updated part
+        text += ` <span style="color:#667eea; margin-top: 5px; display: inline-block;">${updatedText}</span>`;
+      }
+      
+      return text;
+    },
     progressPercentage() {
       if (this.currentStage === 4) {
-        return ((this.iterationCount - 1) / this.maxIterations) * 100
+        // ✅ [修改 B.1] 移除 maxIterations 依赖, 变成只增不减的进度
+        return 0; // Or some other logic if needed, maybe hide it?
+        // return ((this.iterationCount - 1) / this.maxIterations) * 100 
       }
       if (this.currentStage === 2 && this.questions.length > 0) {
         return (this.answeredCount / this.questions.length) * 100
@@ -528,6 +541,20 @@ export default {
     console.log(`[Log] Session started: ${this.sessionId}`);
   },
   methods: {
+    // ✅ [修改 C.5] 新增正则转义辅助函数
+    escapeRegExp(string) {
+      // $& means the whole matched string
+      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
+    },
+    // ✅ [修改 C.3] 新增悬停处理方法
+    onPhotoHover(idx) {
+      if (this.aiPhotos[idx] && this.aiPhotos[idx].sentence) {
+        this.highlightedSentence = this.aiPhotos[idx].sentence;
+      }
+    },
+    onPhotoLeave() {
+      this.highlightedSentence = null;
+    },
     onEditableInput(e) {
       const el = this.$refs.editableNarrative;
       if (!el) return;
@@ -981,13 +1008,22 @@ export default {
         this.aiPhotos = [];
         this.allPhotos = [];
 
-        const sentencePairsWithPhotos = this.sentencePairs.map((sentence, index) => ({
-          ...sentence,
-          photo: base64Photos || null
+        // ✅ [ Bug 修复点 ]
+        // 之前：sentencePairsWithPhotos = this.sentencePairs.map(...)
+        //       这会把 prompt:None 的项也带上，虽然后端会跳过，但是
+        //       在构造 photo 字段时，逻辑是错的。
+        //
+        // 修正：我们只发送需要生成的 (toGenerate)，并为它们附加 *所有* 参考图 (base64Photos)
+        
+        const payloadToSend = toGenerate.map(item => ({
+            ...item,
+            photo: base64Photos // 附加所有原始照片作为参考
         }));
+        
+        console.log(`[Stage 3] 准备发送 ${payloadToSend.length} 个生成任务...`);
 
         const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
-          sentence_pairs: sentencePairsWithPhotos,
+          sentence_pairs: payloadToSend, // ✅ [修复] 只发送需生成的
         }, { timeout: 600000 });
 
         if (!(genResp.data && genResp.data.results)) {
@@ -1004,7 +1040,8 @@ export default {
         results.forEach(res => {
           const idx = res.index;
           const urls = res.generated_urls || [];
-          if (!urls.length) return;
+          if (!urls.length) return; // 静默跳过生成失败的
+          
           let firstUrl = urls[0];
           if (firstUrl.startsWith("/")) {
             firstUrl = BACKEND_BASE + firstUrl;
@@ -1012,42 +1049,23 @@ export default {
             firstUrl = BACKEND_BASE + "/static/generated/" + firstUrl;
           }
 
+          // 从原始 full list (this.sentencePairs) 中查找
           const pair = this.sentencePairs.find(p => p.index === idx);
-          let targetAiIndex = -1;
-          if (pair && pair.photo) {
-            const photoSlot = this.photos.findIndex(p => p.url === pair.photo || (p.file && pair.photo.includes("data:")));
-            if (photoSlot !== -1) targetAiIndex = photoSlot;
-          }
-
-          if (targetAiIndex === -1) {
-            const emptyIndex = this.aiPhotos.findIndex(a => !a.url);
-            if (emptyIndex !== -1) targetAiIndex = emptyIndex;
-          }
-          if (targetAiIndex === -1) {
-            targetAiIndex = this.aiPhotos.length;
-            this.aiPhotos.push({});
-          }
-
+          
+          // ✅ [修复] Stage 3 的 aiPhotos 数组是空的, 我们直接 push
+          
           const aiObj = {
             file: null,
             url: firstUrl,
-            name: `ai_generated_${Date.now()}_${targetAiIndex}.jpg`,
+            name: `ai_generated_${Date.now()}_${idx}.jpg`,
             prompt: res.prompt || pair?.prompt || null,
-            origin_pair_index: idx
+            origin_pair_index: idx,
+            sentence: pair?.sentence || null // ✅ [修改 C.1] 存储原始句子
           };
+          
+          this.aiPhotos.push(aiObj); // ✅ [修复] 直接 push
 
-          this.allPhotos.push({
-            ...this.photos[targetAiIndex] || {},
-            aiGenerated: aiObj,
-            index: idx
-          });
-
-          if (typeof this.$set === 'function') {
-            this.$set(this.aiPhotos, targetAiIndex, aiObj);
-          } else {
-            this.aiPhotos[targetAiIndex] = aiObj;
-            this.aiPhotos = this.aiPhotos.slice();
-          }
+          // this.allPhotos.push({ ... }); // allPhotos 逻辑似乎未在 UI 中使用，暂时注释
         });
 
         // ✅ 记录批量生成
@@ -1273,15 +1291,13 @@ export default {
         this.isUpdatingText = false;
       }
     },
-    async generateNewImagesFromNarrative() {
-      if (this.iterationCount > this.maxIterations) {
-        alert("已达到最大迭代次数！");
-        this.iterationStopped = true;
-        return;
-      }
 
+    // ==========================================================
+    // === ❗️【已修复】HERE IS THE FIX ❗️ ===
+    // ==========================================================
+    async generateNewImagesFromNarrative() {
       console.log('S4: 开始根据更新后的叙事文本生成新图片...');
-      const narrative = (this.assistantIntegratedText + '\n' + this.assistantUpdatedText).trim(); // ✅ 修正为 '\n'
+      const narrative = (this.assistantIntegratedText + '\n' + this.assistantUpdatedText).trim();
 
       if (!narrative || !this.assistantUpdatedText) {
         alert("AI 叙事没有更新，请先回答问题并[整合文本]");
@@ -1298,12 +1314,23 @@ export default {
         });
 
         let newSentencePairs = response.data.sentence_pairs || [];
-        const toGenerate = newSentencePairs.filter(p => p.prompt);
-        const limitedToGenerate = toGenerate.slice(0, 2);
+        
+        // ✅ [ Bug 修复点 ]
+        // 过滤出所有带 prompt 的新句子
+        const toGenerateWithPrompts = newSentencePairs.filter(p => p.prompt);
 
-        if (limitedToGenerate.length > 0) {
+        if (toGenerateWithPrompts.length > 0) {
+          console.log(`[Stage 4 Fix] 找到了 ${toGenerateWithPrompts.length} 个新 prompt，附加参考图后发送...`);
+
+          // ✅ [❗️ THE FIX ❗️]
+          // 必须将原始照片(base64Photos)数组附加到 *每一个* // 需要生成的 item 的 'photo' 字段上，以供后端参考
+          const payloadToSend = toGenerateWithPrompts.map(item => ({
+              ...item,
+              photo: base64Photos // 关键：添加原始照片
+          }));
+          
           const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
-            sentence_pairs: limitedToGenerate
+            sentence_pairs: payloadToSend // ✅ 发送修正后的 payload
           }, { timeout: 600000 });
 
           if (!(genResp.data && genResp.data.results)) {
@@ -1319,10 +1346,16 @@ export default {
           const beforePhotos = [...this.aiPhotos.map(p => ({ url: p.url, prompt: p.prompt }))];
 
           results.forEach(res => {
-            const idx = res.index;
-            const originalPair = limitedToGenerate[idx];
+            const idx = res.index; 
+            
+            // 从完整的 newSentencePairs 列表中查找
+            const pairFromAll = newSentencePairs.find(p => p.index === idx);
+
             const urls = res.generated_urls || [];
-            if (!urls.length) return;
+            if (!urls.length) {
+                console.warn(`[Stage 4] Index ${idx} (Prompt: ${pairFromAll?.prompt}) 未能生成 URL。`);
+                return; // 跳过生成失败的
+            }
             let firstUrl = urls[0];
             if (firstUrl.startsWith("/")) {
               firstUrl = BACKEND_BASE + firstUrl;
@@ -1333,12 +1366,13 @@ export default {
             const aiObj = {
               file: null,
               url: firstUrl,
-              name: `ai_generated_s4_${Date.now()}.jpg`,
-              prompt: res.prompt || originalPair?.prompt || null,
-              iterationLabel: `Iter ${this.iterationCount}`
+              name: `ai_generated_s4_${Date.now()}_${idx}.jpg`,
+              prompt: res.prompt || pairFromAll?.prompt || null,
+              iterationLabel: `Iter ${this.iterationCount}`,
+              sentence: pairFromAll?.sentence || null 
             };
 
-            this.aiPhotos.push(aiObj);
+            this.aiPhotos.push(aiObj); // ✅ 直接 push 新图片
 
             // ✅ 单图生成记录
             this.aiPhotosHistory.push({
@@ -1352,7 +1386,7 @@ export default {
           });
 
           // 迭代收尾
-          this.assistantIntegratedText = (this.assistantIntegratedText + '\n' + this.assistantUpdatedText).trim(); // ✅ 修正为 '\n'
+          this.assistantIntegratedText = (this.assistantIntegratedText + '\n' + this.assistantUpdatedText).trim();
           this.iterationCount += 1;
           this.assistantUpdatedText = '';
           this.aiSuggestion = '';
@@ -1371,19 +1405,29 @@ export default {
             narrativeAfter: afterNarrative,
             photosBefore: beforePhotos,
             photosAfter: afterPhotos,
-            newPrompts: limitedToGenerate.map(p => p.prompt),
+            newPrompts: payloadToSend.map(p => p.prompt), // ✅ [修复]
             generatedCount: results.length
           });
 
-          if (this.iterationCount > this.maxIterations) {
-            this.iterationStopped = true;
-          }
+        } else {
+           console.log("[Stage 4 Fix] /generate-prompts 未返回任何带 prompt 的新句子，跳过生成。");
+           // 如果没有新图生成，也要合并文本
+           this.assistantIntegratedText = (this.assistantIntegratedText + '\n' + this.assistantUpdatedText).trim();
+           this.iterationCount += 1; // 仍然消耗一次迭代
+           this.assistantUpdatedText = '';
+           this.aiSuggestion = '';
+           this.stage4Questions = [];
+           this.currentQuestionIndex = 0;
         }
       } catch (error) {
         console.error("Error in generateNewImagesFromNarrative:", error);
         alert("S4: 根据叙事更新图像时出错，请查看控制台");
       }
     },
+    // ==========================================================
+    // === ❗️ 修复结束 ❗️ ===
+    // ==========================================================
+
     async submitIndividualPhotoUpdate() {
       const index = this.suggestionForPhotoIndex;
       const suggestion = this.currentSuggestionText.trim();
@@ -1458,6 +1502,7 @@ export default {
           prompt: newPrompt,
           name: `ai_modified_${Date.now()}_${index}.jpg`,
           iterationLabel: `Manual_${this.iterationCount}`
+          // sentence 保持不变
         };
 
         this.$set(this.aiPhotos, index, updatedAiObj);
