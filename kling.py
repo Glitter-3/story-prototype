@@ -8,8 +8,8 @@ import re
 # ================== 配置区 ==================
 # ACCESS_KEY = "ANhJAaJEBmMdJJdfGPK3BYBYMDCfYrpM"  # 填写access key
 # SECRET_KEY = "EDfPJMEJKneGLJR49TfaGRdNTdCyr88R"  # 填写secret key
-ACCESS_KEY = "ACfK8pCNprCAPd4RreRG9hHPaHHTpatp"
-SECRET_KEY = "JApndHDNNfLHPpTYr8BbdnRfaaCCQtff"
+ACCESS_KEY = "AaQQDaB3BYKamYfQgCNyhHCHREMMrtfN"
+SECRET_KEY = "Em4pdyTBCYgnLCRm3HteFfyh38Ch9NgY"
 API_BASE_URL = "https://api-beijing.klingai.com"  # API域名
 
 

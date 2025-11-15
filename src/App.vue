@@ -174,7 +174,7 @@
           <div class="panel-header">
             <h3>📝 用户口述</h3>
             <div class="panel-controls">
-              <button class="control-btn" @click="calculateMemoryMetrics">计算记忆指标</button>
+              <button class="control-btn" @click="calculateMemoryMetrics">保存文本</button>
               <button class="control-btn" @click="reselectText">🔄 重新口述</button>
 
               <button v-if="currentStage === 3" class="control-btn" @click="generateImages">图像补全</button>
@@ -1424,15 +1424,11 @@ export default {
         alert("S4: 根据叙事更新图像时出错，请查看控制台");
       }
     },
-    // ==========================================================
-    // === ❗️ 修复结束 ❗️ ===
-    // ==========================================================
-
     async submitIndividualPhotoUpdate() {
       const index = this.suggestionForPhotoIndex;
       const suggestion = this.currentSuggestionText.trim();
       if (index === null || !suggestion) return;
-      
+
       const photo = this.aiPhotos[index];
       if (!photo || !photo.prompt) {
         alert("未找到原始 Prompt，无法更新。");
@@ -1443,31 +1439,19 @@ export default {
       this.isUpdatingPhoto = true;
 
       try {
-        // ✅ 关键修改：准备参考图片数组（取前4张原始照片的 base64）
+        // ✅ 【关键修复】准备参考图片 base64 字符串数组（带 data:image/... 前缀）
         const base64Photos = await Promise.all(
           this.photos.slice(0, 4).map(p => this.convertToBase64(p.file))
         );
 
-        // ✅ 构建正确的 subject_imgs 格式
-        const subject_imgs = base64Photos.map(b64 => {
-          // 提取纯 base64（移除 data:image/xxx;base64, 前缀）
-          const pureB64 = b64.includes(',') ? b64.split(',')[1] : b64;
-          return { "subject_image": pureB64 };
-        });
-
-        // ✅ style_img 使用第一张图片
-        const style_img_b64 = base64Photos[0].includes(',') 
-          ? base64Photos[0].split(',')[1] 
-          : base64Photos[0];
-
-        // ✅ 合成新 prompt（原 prompt + 建议）
+        // ✅ 合成新 prompt（原 prompt + 用户建议）
         const newPrompt = `${photo.prompt}, ${suggestion}`;
 
-        // ✅ 传递给后端的格式
+        // ✅ 构造 sentence_pairs：photo 字段必须是 string[]（base64 data URLs）
         const manual_sentence_pairs = [{
           index: 0,
           prompt: newPrompt,
-          photo: subject_imgs  // ✅ 传递参考图数组
+          photo: base64Photos, // ✅ 直接传字符串数组，后端能正确解析
         }];
 
         const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
@@ -1505,7 +1489,7 @@ export default {
           // sentence 保持不变
         };
 
-        this.$set(this.aiPhotos, index, updatedAiObj);
+        this.aiPhotos[index] = updatedAiObj;
 
         // ✅ 记录修改
         this.stage4Modifications.push({
