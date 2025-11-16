@@ -1015,9 +1015,33 @@ export default {
         //
         // 修正：我们只发送需要生成的 (toGenerate)，并为它们附加 *所有* 参考图 (base64Photos)
         
+        // const payloadToSend = toGenerate.map(item => ({
+        //     ...item,
+        //    photo: base64Photos 
+        // 之前：附加所有原始照片作为参考
+        // }));
+
+        // 修改：继承逻辑
+        // 1. 预处理：遍历完整故事线，记录每一句应该继承哪张照片
+        // 默认从第一张照片开始
+        let runningPhoto = base64Photos.length > 0 ? base64Photos[0] : null;
+        const indexToPhotoMap = {}; // 用于存：句子Index -> 对应照片
+
+        // this.sentencePairs 是完整的故事列表（包含有图的和没图的），且已按顺序排好
+        this.sentencePairs.forEach(p => {
+          if (p.photo) {
+            // 如果这句话本身就有匹配的原图，就更新“当前照片”
+            runningPhoto = p.photo;
+          }
+          // 记录下来：当前这句话（p.index）应该用 runningPhoto
+          indexToPhotoMap[p.index] = runningPhoto;
+        });
+
+        // 2. 生成：直接从做好的 Map 里取照片
         const payloadToSend = toGenerate.map(item => ({
             ...item,
-            photo: base64Photos // 附加所有原始照片作为参考
+            // 从 Map 中取出根据剧情上下文确定的那张照片
+            photo: indexToPhotoMap[item.index] ? [indexToPhotoMap[item.index]] : []
         }));
         
         console.log(`[Stage 3] 准备发送 ${payloadToSend.length} 个生成任务...`);
@@ -1065,7 +1089,39 @@ export default {
           
           this.aiPhotos.push(aiObj); // ✅ [修复] 直接 push
 
-          // this.allPhotos.push({ ... }); // allPhotos 逻辑似乎未在 UI 中使用，暂时注释
+        });
+
+        // Initialize allPhotos sequence
+        this.allPhotos = [];
+        const aiMap = {};
+        this.aiPhotos.forEach(ai => {
+          if (ai.origin_pair_index !== undefined) aiMap[ai.origin_pair_index] = ai;
+        });
+        
+        // Simple original photo fallback
+        let currentOrigUrl = this.photos.length > 0 ? this.photos[0].url : null;
+        
+        this.sentencePairs.forEach(pair => {
+          const aiPhoto = aiMap[pair.index];
+          if (aiPhoto) {
+            this.allPhotos.push({
+              type: 'ai',
+              sourceIndex: pair.index,
+              url: aiPhoto.url,
+              prompt: aiPhoto.prompt,
+              sentence: pair.sentence
+            });
+          } else {
+            // Use current original if no AI exists for this beat
+            if (currentOrigUrl) {
+              this.allPhotos.push({
+                type: 'original',
+                sourceIndex: pair.index,
+                url: currentOrigUrl,
+                sentence: pair.sentence
+              });               
+            }
+          }
         });
 
         // ✅ 记录批量生成
@@ -1322,8 +1378,8 @@ export default {
         if (toGenerateWithPrompts.length > 0) {
           console.log(`[Stage 4 Fix] 找到了 ${toGenerateWithPrompts.length} 个新 prompt，附加参考图后发送...`);
 
-          // ✅ [❗️ THE FIX ❗️]
-          // 必须将原始照片(base64Photos)数组附加到 *每一个* // 需要生成的 item 的 'photo' 字段上，以供后端参考
+          // ✅ [修改]
+          // 将原始照片(base64Photos)数组附加到 *每一个* // 需要生成的 item 的 'photo' 字段上，以供后端参考
           const payloadToSend = toGenerateWithPrompts.map(item => ({
               ...item,
               photo: base64Photos // 关键：添加原始照片
@@ -1373,6 +1429,16 @@ export default {
             };
 
             this.aiPhotos.push(aiObj); // ✅ 直接 push 新图片
+
+            // Sync to allPhotos
+            this.allPhotos.push({
+              type: 'ai',
+              sourceIndex: idx,
+              url: aiObj.url,
+              prompt: aiObj.prompt,
+              sentence: aiObj.sentence,
+              iterationLabel: aiObj.iterationLabel
+            });
 
             // ✅ 单图生成记录
             this.aiPhotosHistory.push({
@@ -1490,6 +1556,14 @@ export default {
         };
 
         this.aiPhotos[index] = updatedAiObj;
+
+        // 同步更新 allPhotos
+        const targetInAll = this.allPhotos.find(p => p.type === 'ai' && p.url === photo.url);
+        if (targetInAll) {
+          targetInAll.url = updatedAiObj.url;
+          targetInAll.prompt = updatedAiObj.prompt;
+          targetInAll.iterationLabel = updatedAiObj.iterationLabel;
+        }
 
         // ✅ 记录修改
         this.stage4Modifications.push({
