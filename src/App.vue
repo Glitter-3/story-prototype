@@ -144,6 +144,17 @@
             </div>
 
             <div class="bottom-panel">
+              <div v-if="currentStage === 5" style="text-align: center; margin-bottom: 10px;">
+                <button 
+                  class="control-btn primary" 
+                  @click="generateAiVideo"
+                  :disabled="isGeneratingVideo">
+                  {{ isGeneratingVideo ? '生成中…' : '🎬 生成最终视频' }}
+                </button>
+                <span v-if="videoGenerationError" style="color: red; font-size: 12px; margin-left: 8px;">
+                  {{ videoGenerationError }}
+                </span>
+              </div>              
               <div class="split-title">🎬 AI 增强视频</div>
               <div class="video-slot">
                 <video 
@@ -480,6 +491,9 @@ export default {
       suggestionForPhotoIndex: null,
       currentSuggestionText: '',
       isUpdatingPhoto: false,
+      // 视频生成状态
+      isGeneratingVideo: false,
+      videoGenerationError: null,
       // stage 3&4 整合文本用户修改功能
       assistantEditMode: false,        // 是否处于编辑模式（显示 textarea）
       assistantEditBuffer: '',        // 编辑缓冲文本（textarea 的 v-model）
@@ -972,6 +986,150 @@ export default {
         this.integrating = false;
       }
     },
+    // async generateImages() {
+    //   if (this.currentStage !== 3) {
+    //     alert("图像补全功能仅在 Stage 3 可用");
+    //     return;
+    //   }
+    //   console.log('开始获取文生图prompt...');
+    //   const narrative = this.assistantIntegratedText;
+    //   if (!narrative) {
+    //     alert("AI 整合结果为空，请先点击 [整合文本]");
+    //     return;
+    //   }
+    //   try {
+    //     // 1️⃣ 上传原始照片转 base64
+    //     const base64Photos = await Promise.all(
+    //       this.photos.map(photo => this.convertToBase64(photo.file))
+    //     );
+    //     // 2️⃣ 获取 Qwen 生成的 sentence_pairs
+    //     const response = await axios.post('http://127.0.0.1:5000/generate-prompts', {
+    //       photos: base64Photos,
+    //       narrative: narrative,
+    //     });
+    //     this.sentencePairs = response.data.sentence_pairs || [];
+    //     console.log('图文配对结果：', toRaw(this.sentencePairs));
+    //     this.sentencePairs.sort((a, b) => a.index - b.index);
+    //     alert("Qwen已完成分句与prompt生成");
+
+    //     // 3️⃣ 过滤出需要生成的 prompt
+    //     const toGenerate = this.sentencePairs.filter(p => p.prompt);
+    //     if (!toGenerate.length) {
+    //       alert("没有需要生成的 prompt，操作结束");
+    //       return;
+    //     }
+
+    //     this.aiPhotos = [];
+    //     this.allPhotos = []; // ✅ 清空，重新填充
+
+    //     // 4️⃣ 构建 payload：取前4张原图作参考（可灵要求 2~4 张）
+    //     const payloadToSend = toGenerate.map(item => ({
+    //       ...item,
+    //       photo: base64Photos.slice(0, 4)
+    //     }));
+
+    //     console.log(`[Stage 3] 准备发送 ${payloadToSend.length} 个生成任务...`);
+    //     const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
+    //       sentence_pairs: payloadToSend
+    //     }, { timeout: 600000 });
+
+    //     if (!(genResp.data && genResp.data.results)) {
+    //       console.error("generate-images 返回异常：", genResp.data);
+    //       alert("生成图片时出错，请查看控制台");
+    //       return;
+    //     }
+    //     const results = genResp.data.results;
+    //     console.log("生成图片结果：", results);
+    //     const BACKEND_BASE = "http://127.0.0.1:5000";
+
+    //     // ✅【关键】5️⃣ 用 for...of + await 替代 forEach —— 支持串行下载
+    //     const aiMap = {};
+    //     for (const res of results) {
+    //       const idx = res.index;
+    //       const urls = res.generated_urls || [];
+    //       if (!urls.length) continue; // 跳过失败项
+
+    //       let firstUrl = urls[0];
+
+    //       let finalUrl = firstUrl;
+    //       // 如果是可灵返回的完整 URL（如 http://127.0.0.1:5000/static/generated/xxx.jpg），直接用
+    //       if (firstUrl.includes('/static/')) {
+    //         finalUrl = firstUrl;
+    //       } else if (firstUrl.startsWith('/')) {
+    //         finalUrl = BACKEND_BASE + firstUrl;
+    //       } else if (!firstUrl.startsWith('http')) {
+    //         finalUrl = BACKEND_BASE + '/static/generated/' + firstUrl;
+    //       } else if (!firstUrl.startsWith("data:")) {
+    //         firstUrl = BACKEND_BASE + "/static/generated/" + firstUrl;
+    //       }
+    //       // data: URL 忽略（kling 不应返回）
+
+    //       const pair = this.sentencePairs.find(p => p.index === idx);
+    //       const aiObj = {
+    //         file: null,
+    //         url: firstUrl,
+    //         name: `ai_generated_${Date.now()}_${idx}.jpg`,
+    //         prompt: res.prompt || pair?.prompt || null,
+    //         origin_pair_index: idx,
+    //         sentence: pair?.sentence || null,
+    //         iterationLabel: `S3_Init`
+    //       };
+    //       this.aiPhotos.push(aiObj);
+    //       aiMap[idx] = aiObj;
+    //     }
+
+    //     // 6️⃣ ✅ 构建 allPhotos（严格按叙事顺序）
+    //     this.allPhotos = [];
+    //     this.sentencePairs.forEach(pair => {
+    //       const aiPhoto = aiMap[pair.index];
+
+    //       if (aiPhoto) {
+    //         this.allPhotos.push({
+    //           type: 'ai',
+    //           sourceIndex: pair.index,
+    //           url: aiPhoto.url,
+    //           prompt: aiPhoto.prompt,
+    //           sentence: pair.sentence
+    //         });
+    //       } else {
+    //         // fallback：找原图
+    //         let fallbackUrl = null;
+    //         if (pair.origin_pair_index !== undefined && this.photos[pair.origin_pair_index]) {
+    //           fallbackUrl = this.photos[pair.origin_pair_index].url;
+    //         } else if (this.photos.length > 0) {
+    //           fallbackUrl = this.photos[0].url;
+    //         }
+
+    //         if (fallbackUrl) {
+    //           this.allPhotos.push({
+    //             type: 'original',
+    //             sourceIndex: pair.index,
+    //             url: fallbackUrl,
+    //             sentence: pair.sentence
+    //           });
+    //         }
+    //       }
+    //     });
+
+    //     // 7️⃣ 记录历史
+    //     this.aiPhotosHistory.push({
+    //       timestamp: new Date().toISOString(),
+    //       type: 'batch',
+    //       iterationLabel: `S3_Init`,
+    //       count: results.length,
+    //       pairs: results.map(r => ({
+    //         index: r.index,
+    //         prompt: r.prompt,
+    //         urls: r.generated_urls
+    //       }))
+    //     });
+
+    //     alert("图像生成并更新完毕，已显示在 AI 增强照片区");
+    //   } catch (error) {
+    //     console.error("Error generating prompts or images:", error);
+    //     alert("生成图像时出错，请查看控制台");
+    //   }
+    // },
     async generateImages() {
       if (this.currentStage !== 3) {
         alert("图像补全功能仅在 Stage 3 可用");
@@ -985,20 +1143,22 @@ export default {
       }
 
       try {
+        // 1️⃣ 上传原始照片转 base64
         const base64Photos = await Promise.all(
           this.photos.map(photo => this.convertToBase64(photo.file))
         );
+
+        // 2️⃣ 获取 Qwen 生成的 sentence_pairs
         const response = await axios.post('http://127.0.0.1:5000/generate-prompts', {
           photos: base64Photos,
           narrative: narrative,
         });
-
         this.sentencePairs = response.data.sentence_pairs || [];
         console.log('图文配对结果：', toRaw(this.sentencePairs));
         this.sentencePairs.sort((a, b) => a.index - b.index);
-
         alert("Qwen已完成分句与prompt生成");
 
+        // 3️⃣ 过滤出需要生成的 prompt
         const toGenerate = this.sentencePairs.filter(p => p.prompt);
         if (!toGenerate.length) {
           alert("没有需要生成的 prompt，操作结束");
@@ -1008,46 +1168,15 @@ export default {
         this.aiPhotos = [];
         this.allPhotos = [];
 
-        // ✅ [ Bug 修复点 ]
-        // 之前：sentencePairsWithPhotos = this.sentencePairs.map(...)
-        //       这会把 prompt:None 的项也带上，虽然后端会跳过，但是
-        //       在构造 photo 字段时，逻辑是错的。
-        //
-        // 修正：我们只发送需要生成的 (toGenerate)，并为它们附加 *所有* 参考图 (base64Photos)
-        
-        // const payloadToSend = toGenerate.map(item => ({
-        //     ...item,
-        //    photo: base64Photos 
-        // 之前：附加所有原始照片作为参考
-        // }));
-
-        // 修改：继承逻辑
-        // 1. 预处理：遍历完整故事线，记录每一句应该继承哪张照片
-        // 默认从第一张照片开始
-        let runningPhoto = base64Photos.length > 0 ? base64Photos[0] : null;
-        const indexToPhotoMap = {}; // 用于存：句子Index -> 对应照片
-
-        // this.sentencePairs 是完整的故事列表（包含有图的和没图的），且已按顺序排好
-        this.sentencePairs.forEach(p => {
-          if (p.photo) {
-            // 如果这句话本身就有匹配的原图，就更新“当前照片”
-            runningPhoto = p.photo;
-          }
-          // 记录下来：当前这句话（p.index）应该用 runningPhoto
-          indexToPhotoMap[p.index] = runningPhoto;
-        });
-
-        // 2. 生成：直接从做好的 Map 里取照片
+        // 4️⃣ 构建 payload：取前4张原图作参考（可灵要求 2~4 张）
         const payloadToSend = toGenerate.map(item => ({
-            ...item,
-            // 从 Map 中取出根据剧情上下文确定的那张照片
-            photo: indexToPhotoMap[item.index] ? [indexToPhotoMap[item.index]] : []
+          ...item,
+          photo: base64Photos.slice(0, 4)
         }));
-        
-        console.log(`[Stage 3] 准备发送 ${payloadToSend.length} 个生成任务...`);
 
+        console.log(`[Stage 3] 准备发送 ${payloadToSend.length} 个生成任务...`);
         const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
-          sentence_pairs: payloadToSend, // ✅ [修复] 只发送需生成的
+          sentence_pairs: payloadToSend
         }, { timeout: 600000 });
 
         if (!(genResp.data && genResp.data.results)) {
@@ -1058,50 +1187,64 @@ export default {
 
         const results = genResp.data.results;
         console.log("生成图片结果：", results);
-
         const BACKEND_BASE = "http://127.0.0.1:5000";
 
-        results.forEach(res => {
+        // ✅【核心】5️⃣ 构建 aiMap，确保 url 是可持久访问的本地路径
+        const aiMap = {};
+        for (const res of results) {
           const idx = res.index;
           const urls = res.generated_urls || [];
-          if (!urls.length) return; // 静默跳过生成失败的
-          
+          if (!urls.length) continue; // 跳过失败项
+
           let firstUrl = urls[0];
-          if (firstUrl.startsWith("/")) {
-            firstUrl = BACKEND_BASE + firstUrl;
-          } else if (!firstUrl.startsWith("http://") && !firstUrl.startsWith("https://")) {
-            firstUrl = BACKEND_BASE + "/static/generated/" + firstUrl;
+
+          // ✅【关键修复】统一规范化 URL：确保它指向 /static/generated/ 下的本地资源
+          let finalUrl = '';
+          if (firstUrl.includes('/static/')) {
+            // 已是本地路径（绝对或相对），补全为完整 URL
+            if (firstUrl.startsWith('/')) {
+              finalUrl = BACKEND_BASE + firstUrl;
+            } else if (firstUrl.startsWith('http')) {
+              finalUrl = firstUrl; // 已完整，如 http://127.0.0.1:5000/static/...
+            } else {
+              // 纯路径如 "xxx.jpg" —— 不存在，但兜底处理
+              finalUrl = BACKEND_BASE + '/static/generated/' + firstUrl;
+            }
+          } else if (firstUrl.startsWith('/')) {
+            finalUrl = BACKEND_BASE + firstUrl;
+          } else if (firstUrl.startsWith('http')) {
+            // ⚠️ 可能是可灵外链（如 oss.kling.ai/xxx.jpg）
+            // ❗ 但 /generate-images 已调用 download_to_generated，不应出现外部 URL
+            // 若出现，说明后端未保存成功 → 前端无法访问，应 fallback 或报错
+            console.warn('⚠️ 检测到外部 URL（非 /static/），可能无法访问：', firstUrl);
+            // 这里可选：跳过 / 显示警告 / 交由后端统一处理（推荐）
+            // 我们选择：仍用它，但标记风险（真实项目应要求后端保证返回本地路径）
+            finalUrl = firstUrl;
+          } else if (!firstUrl.startsWith('data:')) {
+            // 假设是文件名
+            finalUrl = BACKEND_BASE + '/static/generated/' + firstUrl;
+          } else {
+            console.warn('⚠️ 忽略 data URL（不应出现）：', firstUrl);
+            continue;
           }
 
-          // 从原始 full list (this.sentencePairs) 中查找
           const pair = this.sentencePairs.find(p => p.index === idx);
-          
-          // ✅ [修复] Stage 3 的 aiPhotos 数组是空的, 我们直接 push
-          
           const aiObj = {
             file: null,
-            url: firstUrl,
+            url: finalUrl, // ✅ 用 finalUrl，不是 firstUrl！
             name: `ai_generated_${Date.now()}_${idx}.jpg`,
             prompt: res.prompt || pair?.prompt || null,
             origin_pair_index: idx,
-            sentence: pair?.sentence || null // ✅ [修改 C.1] 存储原始句子
+            sentence: pair?.sentence || null,
+            iterationLabel: `S3_Init`
           };
-          
-          this.aiPhotos.push(aiObj); // ✅ [修复] 直接 push
+          this.aiPhotos.push(aiObj);
+          aiMap[idx] = aiObj;
+        }
 
-        });
-
-        // Initialize allPhotos sequence
+        // 6️⃣ 构建 allPhotos（严格按 sentencePairs 顺序）
         this.allPhotos = [];
-        const aiMap = {};
-        this.aiPhotos.forEach(ai => {
-          if (ai.origin_pair_index !== undefined) aiMap[ai.origin_pair_index] = ai;
-        });
-        
-        // Simple original photo fallback
-        let currentOrigUrl = this.photos.length > 0 ? this.photos[0].url : null;
-        
-        this.sentencePairs.forEach(pair => {
+        for (const pair of this.sentencePairs) {
           const aiPhoto = aiMap[pair.index];
           if (aiPhoto) {
             this.allPhotos.push({
@@ -1112,19 +1255,32 @@ export default {
               sentence: pair.sentence
             });
           } else {
-            // Use current original if no AI exists for this beat
-            if (currentOrigUrl) {
+            // fallback：找原图
+            let fallbackUrl = null;
+            if (pair.origin_pair_index !== undefined && this.photos[pair.origin_pair_index]) {
+              fallbackUrl = this.photos[pair.origin_pair_index].url;
+              // 确保原图 URL 也是完整路径（上传时已返回 /static/uploads/...）
+              if (fallbackUrl && fallbackUrl.startsWith('/')) {
+                fallbackUrl = BACKEND_BASE + fallbackUrl;
+              }
+            } else if (this.photos.length > 0) {
+              fallbackUrl = this.photos[0].url;
+              if (fallbackUrl && fallbackUrl.startsWith('/')) {
+                fallbackUrl = BACKEND_BASE + fallbackUrl;
+              }
+            }
+            if (fallbackUrl) {
               this.allPhotos.push({
                 type: 'original',
                 sourceIndex: pair.index,
-                url: currentOrigUrl,
+                url: fallbackUrl,
                 sentence: pair.sentence
-              });               
+              });
             }
           }
-        });
+        }
 
-        // ✅ 记录批量生成
+        // 7️⃣ 记录历史
         this.aiPhotosHistory.push({
           timestamp: new Date().toISOString(),
           type: 'batch',
@@ -1626,44 +1782,184 @@ export default {
     getLetterIndex(idx) {
       return String.fromCharCode(97 + idx);
     },
-    async saveExperimentLog() {
-      try {
-        const logData = {
-          userId: this.userId,
-          sessionId: this.sessionId,
-          startTime: this.startTime,
-          endTime: new Date().toISOString(),
-          userAgent: this.userAgent,
-          screenResolution: this.screenResolution,
-          stageTimestamps: { ...this.stageTimestamps },
-          narratives: { ...this.userNarratives },
-          stage2QA: [...this.stage2QA],
-          stage4QA: [...this.stage4QA],
-          stage3Modifications: [...this.stage3Modifications],
-          stage4Iterations: [...this.stage4Iterations],
-          stage4Modifications: [...this.stage4Modifications],
-          aiPhotosHistory: [...this.aiPhotosHistory],
-          originalPhotoUrls: this.photos.map(p => p.url).filter(Boolean),
-          aiPhotoUrls: this.aiPhotos.map(p => p.url).filter(Boolean),
-          aiPhotoMeta: this.aiPhotos.map(p => ({
-            url: p.url,
-            prompt: p.prompt,
-            iterationLabel: p.iterationLabel
-          }))
-        };
+    async generateAiVideo() {
+      if (this.isGeneratingVideo) return;
+      this.isGeneratingVideo = true;
+      this.videoGenerationError = null;
 
-        const resp = await axios.post('http://127.0.0.1:5000/save-experiment-log', {
-          log: logData
+      let pollInterval = null;
+
+      try {
+        console.log('🎬 [Stage5] 开始生成即梦视频（AABBCCDD → AA, AB, BB, BC, CC, CD, DD）...');
+
+        // ————— Step 1~4：构造 jimengPhotos & jimengPrompts（和原来一样）—————
+        const basePhotos = this.allPhotos
+          .map(p => p.url)
+          .filter(url => url && typeof url === 'string');
+
+        if (basePhotos.length === 0) {
+          console.warn('[Stage5] allPhotos 为空，退回到 photos+aiPhotos 逻辑');
+          for (let i = 0; i < this.photos.length; i++) {
+            const origUrl = this.photos[i]?.url;
+            if (!origUrl) continue;
+            basePhotos.push(origUrl);
+            const aiGroup = this.aiPhotos.filter(ai => ai.origin_pair_index === i);
+            if (aiGroup.length > 0) {
+              const latest = aiGroup.reduce((a, b) => {
+                const numA = this._parseIterNum(a?.iterationLabel || '');
+                const numB = this._parseIterNum(b?.iterationLabel || '');
+                return numA > numB ? a : b;
+              });
+              if (latest?.url) basePhotos.push(latest.url);
+            }
+          }
+        }
+
+        if (basePhotos.length === 0) {
+          throw new Error('无有效照片序列（allPhotos 与 fallback 均为空）');
+        }
+
+        const K = basePhotos.length;
+        const jimengPhotos = [];
+        for (let i = 0; i < K; i++) {
+          jimengPhotos.push(basePhotos[i], basePhotos[i]);
+          if (i < K - 1) {
+            jimengPhotos.push(basePhotos[i], basePhotos[i + 1]);
+          }
+        }
+
+        const fullStory = (this.assistantUpdatedText || this.assistantIntegratedText || '').trim();
+        const sentences = fullStory
+          .split(/[。！？；\n]/)
+          .map(s => s.trim())
+          .filter(s => s.length > 3);
+
+        const alignedSentences = [];
+        for (let i = 0; i < K; i++) {
+          alignedSentences.push(
+            i < sentences.length ? sentences[i] :
+            sentences.length > 0 ? sentences[i % sentences.length] :
+            `画面 ${i + 1}`
+          );
+        }
+
+        const jimengPromises = [];
+        for (let i = 0; i < jimengPhotos.length / 2; i++) {
+          const idx1 = i * 2, idx2 = idx1 + 1;
+          const url1 = jimengPhotos[idx1], url2 = jimengPhotos[idx2];
+
+          let promptType = 'transition', sent1 = '', sent2 = '', sentPrev = '', sentNext = '';
+
+          if (url1 === url2) {
+            promptType = 'static';
+            const piIndex = basePhotos.indexOf(url1);
+            if (piIndex >= 0) {
+              sent1 = alignedSentences[piIndex] || '';
+              sentPrev = piIndex > 0 ? alignedSentences[piIndex - 1] || '' : '';
+              sentNext = piIndex + 1 < alignedSentences.length ? alignedSentences[piIndex + 1] || '' : '';
+            }
+          } else {
+            promptType = 'transition';
+            const idxA = basePhotos.indexOf(url1), idxB = basePhotos.indexOf(url2);
+            sent1 = idxA >= 0 ? alignedSentences[idxA] || '' : '';
+            sent2 = idxB >= 0 ? alignedSentences[idxB] || '' : '';
+            sentPrev = idxA > 0 ? alignedSentences[idxA - 1] || '' : '';
+            sentNext = idxB + 1 < alignedSentences.length ? alignedSentences[idxB + 1] || '' : '';
+          }
+
+          jimengPromises.push(
+            axios.post('http://127.0.0.1:5000/refine-prompt', {
+              type: promptType,
+              sentence: sent1,
+              next_sentence: sent2,
+              prev_sentence: sentPrev,
+              post_sentence: sentNext
+            }, { timeout: 8000 })
+            .then(res => (res.data.prompt || '').trim() || 
+                  (promptType === 'static' ? '人物静止，微表情变化，镜头轻微推进' : '平滑过渡'))
+            .catch(err => {
+              console.warn(`[Prompt ${i}] fallback`, err.message);
+              return promptType === 'static' ? '静帧画面' : '自然过渡';
+            })
+          );
+        }
+
+        const jimengPrompts = await Promise.all(jimengPromises);
+        console.log(`[Stage5] 生成 prompts（${jimengPrompts.length} 个）:`, jimengPrompts);
+
+        // ————— Step 5: 提交任务（不再 await，改为轮询）—————
+        const submitResp = await axios.post('http://127.0.0.1:5000/generate-video', {
+          photos: jimengPhotos,
+          prompts: jimengPrompts
+        }, {
+          timeout: 30000 // 提交本身不应太久
         });
 
-        if (resp.data.success) {
-          alert(`✅ 实验日志已保存！\nSession ID: ${this.sessionId}`);
-        } else {
-          throw new Error(resp.data.message || '后端保存失败');
+        if (!submitResp.data.task_id) {
+          throw new Error('后端未返回 task_id');
         }
+
+        const taskId = submitResp.data.task_id;
+        console.log(`✅ 视频任务已提交，task_id = ${taskId}`);
+
+        // ————— Step 6: 轮询直到完成 —————
+        return new Promise((resolve, reject) => {
+          const MAX_POLL = 720; // 最多轮询 12 分钟（每秒 1 次）
+          let pollCount = 0;
+
+          const poll = async () => {
+            try {
+              pollCount++;
+              const statusResp = await axios.get(`http://127.0.0.1:5000/video-status/${taskId}`, {
+                timeout: 10000
+              });
+
+              const { status, videoUrl, error, elapsed } = statusResp.data;
+
+              if (status === 'success') {
+                // ✅ 成功
+                clearInterval(pollInterval);
+                this.aiVideo.url = videoUrl;
+                this.$message?.success?.("🎬 视频生成成功！情感故事已呈现");
+                resolve();
+              } else if (status === 'failed') {
+                // ❌ 失败
+                clearInterval(pollInterval);
+                const msg = error || '生成失败';
+                this.videoGenerationError = msg;
+                this.$message?.error?.(`视频生成失败：${msg}`);
+                reject(new Error(msg));
+              } else if (pollCount >= MAX_POLL) {
+                // ⏳ 超时
+                clearInterval(pollInterval);
+                const msg = `生成超时（>12 分钟，已运行 ${Math.floor(elapsed || 0)} 秒）`;
+                this.videoGenerationError = msg;
+                this.$message?.error?.(msg);
+                reject(new Error(msg));
+              } else {
+                // 🔄 继续轮询
+                console.log(`[Task ${taskId.slice(0,6)}] 等待中... ${status} (第 ${pollCount}s)`);
+              }
+            } catch (err) {
+              console.error(`轮询 /video-status/${taskId} 出错:`, err);
+              // 可选：遇到网络错误不终止，继续轮询（更健壮）
+              // 也可 clearInterval + reject
+            }
+          };
+
+          pollInterval = setInterval(poll, 1000);
+          poll(); // 立即首次查询
+        });
+
       } catch (err) {
-        console.error('[Log Save Error]', err);
-        alert('❌ 实验日志保存失败，请重试\n' + (err.message || 'Unknown error'));
+        console.error("[Video Gen Submit Error]", err);
+        this.videoGenerationError = err.message || "提交失败";
+        this.$message?.error?.("视频任务提交失败，请查看控制台");
+        throw err; // 让 finally 能统一处理
+      } finally {
+        // ✅ 确保清理定时器
+        if (pollInterval) clearInterval(pollInterval);
+        this.isGeneratingVideo = false;
       }
     }
   }

@@ -15,34 +15,25 @@ import string
 from flask import Flask, request, jsonify
 from qwen import QwenChat
 from flask_cors import CORS
+import subprocess
+import tempfile
+import shutil
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 app = Flask(__name__)
-CORS(app)  # 允许跨域请求
-
-# 确保 static/generated 目录存在（Flask 默认会把 /static 映射到 ./static）
-GENERATED_DIR = Path(__file__).parent / "static" / "generated"
-GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+CORS(app,
+     origins=["http://localhost:5173"],
+     allow_headers=["Content-Type", "Authorization"],
+     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+     supports_credentials=True,
+     max_age=86400  # OPTIONS 结果缓存 24h
+)
 
 # 定义后端对外访问的 base 地址（用于返回绝对 URL）
 BACKEND_BASE = "http://127.0.0.1:5000"
+video_tasks = {}  # task_id → {status, video_url, error, start_time}
+video_executor = ThreadPoolExecutor(max_workers=2)  # 视频生成 GPU 密集，严格限制并发
 
-# # helper: 把 data:image/...;base64,... 写成文件，返回文件路径
-# def dataurl_to_file(dataurl, filename=None):
-#     """
-#     dataurl example: "data:image/jpeg;base64,/9j/4AAQ.."
-#     返回写好的文件路径（字符串）
-#     """
-#     m = re.match(r"data:(image/\w+);base64,(.*)", dataurl, re.S)
-#     if not m:
-#         raise ValueError("不是合法的 data URL")
-#     mime, b64 = m.groups()
-#     ext = mime.split('/')[-1]
-#     if not filename:
-#         filename = f"{uuid.uuid4().hex}.{ext}"
-#     out_path = GENERATED_DIR / filename
-#     with open(out_path, "wb") as f:
-#         f.write(base64.b64decode(b64))
-#     return str(out_path)
 def dataurl_to_file(dataurl, filename=None):
     """
     dataurl example: "data:image/jpeg;base64,/9j/4AAQ.."
@@ -76,27 +67,19 @@ def dataurl_to_file(dataurl, filename=None):
     
     return str(out_path)
 
-# helper: 下载远程url到 static/generated 并返回本地相对路径（供前端访问）
+
 def sanitize_filename_from_url(url):
-    """
-    从 URL 解析出一个适合作为本地文件名的 basename（移除 query，保留扩展）
-    """
+    """改为：用 UUID v4 + 原扩展名，完全避免路径问题"""
+    # 解析扩展名（安全兜底）
     parsed = urlparse(url)
-    # 取 path 的最后一段
-    base = os.path.basename(parsed.path)
-    base = unquote(base)  # 解码 %20 等
-    if not base:
-        base = uuid.uuid4().hex
-    # 仅保留允许字符，防止 windows 无效字符
-    valid_chars = "-_.() %s%s" % (string.ascii_letters, string.digits)
-    cleaned = ''.join(c for c in base if c in valid_chars)
-    if not os.path.splitext(cleaned)[1]:
-        # 如果没扩展名，默认用 .jpg
-        cleaned = cleaned + ".jpg"
-    # 防止名字过长
-    if len(cleaned) > 200:
-        cleaned = cleaned[:200]
-    return cleaned
+    path = unquote(parsed.path)
+    _, ext = os.path.splitext(path)
+    ext = ext.lower()
+    if not ext or ext not in ['.jpg', '.jpeg', '.png', '.webp']:
+        ext = '.jpg'
+    # 生成唯一文件名
+    safe_name = f"{uuid.uuid4().hex}{ext}"
+    return safe_name
 
 def download_to_generated(url, filename=None):
     try:
@@ -116,133 +99,15 @@ def download_to_generated(url, filename=None):
         print("下载失败:", e)
         return None
 
-# 新增路由：/generate-images
-# @app.route('/generate-images', methods=['POST'])
-# def generate_images():
-#     """
-#     接收前端传来的 sentence_pairs（同你前端控制台输出结构），
-#     对 prompt != null 的项逐条调用 kling ImageGenerator，等待结果，
-#     把返回的图片下载到 ./static/generated 并返回本地 URL 列表。
-#     请求体示例:
-#     {
-#       "sentence_pairs": [{ "photo": "...dataurl或null...", "sentence": "...", "prompt": "..." }, ...]
-#     }
-#     """
-#     try:
-#         payload = request.get_json()
-#         pairs = payload.get("sentence_pairs", [])
-#         # photos = payload.get("photos", [])
-#         if not pairs:
-#             return jsonify({"error": "no sentence_pairs"}), 400
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-#         # 初始化 ImageGenerator
-#         # ig = ImageGenerator()  # 使用 kling.py 中的类；确保 ACCESS/SECRET 在 kling.py 已设置
-#         ig = MultiImage2Image()
-
-#         # 构造 Authorization header（kling 的示例中用 jwt）
-#         token = ig._encode_jwt_token()  # 直接利用类方法生成 token
-#         AUTHORIZATION = f"Bearer {token}"
-#         HEADERS = {"Content-Type": "application/json", "Authorization": AUTHORIZATION}
-
-#         results = []  # 收集每个 prompt 的返回信息
-
-#         for idx, item in enumerate(pairs):
-#             prompt = item.get("prompt")
-#             # ✅ [修改] 确保使用 item 中传递的 index（如果存在）
-#             item_index = item.get("index", idx) 
-            
-#             if not prompt:
-#                 # 跳过没有 prompt 的项（front-end 不需要生成）
-#                 results.append({"index": item_index, "prompt": None, "generated_urls": [], "note": "no prompt"})
-#                 continue
-
-#             # 如果该项自带 photo（data url），写成临时文件并传给 kling
-#             local_input_path = None
-#             photo = item.get("photo")
-
-#             if isinstance(photo, list) and photo:
-#                 subject_imgs = photo if photo else []
-#                 print(f"Item {item_index} has photo list, taking first element as style_photo.")
-#                 photo = photo[0] 
-
-#             print(f"Type of photo for item {item_index}: {type(photo)}")  # 打印 photo 的类型
-#             print(f"photo for item {item_index}: {photo[:100]}")  # 打印每个 item 的 photo 值
-
-#             if photo and isinstance(photo, str) and photo.startswith("data:"):
-#                 try:
-#                     print('{item_index}写入 dataurl 图片...')
-#                     local_input_path = dataurl_to_file(photo, filename=f"input_{uuid.uuid4().hex}.jpg")
-#                     print("{item_index}写入临时输入图片:", local_input_path)
-#                 except Exception as e:
-#                     print("写入 dataurl 失败:", e)
-#                     local_input_path = None
-
-#             # 调用 ImageGenerator.run（同步轮询）
-#             try:
-#                 task_result = ig.run(
-#                     headers=HEADERS,
-#                     prompt=prompt,
-#                     subject_imgs = subject_imgs,
-#                     style_img=local_input_path if local_input_path else "",
-#                     model_name="kling-v2",
-#                     n=1,
-#                     aspect_ratio="3:4",
-#                     max_wait=300,
-#                     interval=5
-#                 )
-#             except Exception as e:
-#                 print("调用 kling 失败:", e)
-#                 results.append({"index": item_index, "prompt": prompt, "generated_urls": [], "error": str(e)})
-#                 continue
-
-#             # 从 task_result 中提取图片 url（格式依赖 kling 返回的结构）
-#             generated_urls = []
-#             try:
-#                 data = task_result.get("data", {})
-#                 # 适配你 kling.py get_task_result 中返回的结构
-#                 imgs = data.get("task_result", {}).get("images", []) or []
-#                 for im in imgs:
-#                     # im 里通常包含 'url' 字段（远程可访问）
-#                     remote_url = im.get("url")
-#                     if not remote_url:
-#                         # 如果返回的是 base64 字符串字段（示例），可按需写入文件：
-#                         b64 = im.get("b64") or im.get("base64")
-#                         if b64:
-#                             # 写成文件并返回本地 url
-#                             try:
-#                                 fn = f"{uuid.uuid4().hex}.jpg"
-#                                 out_path = GENERATED_DIR / fn
-#                                 with open(out_path, "wb") as f:
-#                                     f.write(base64.b64decode(b64))
-#                                 generated_urls.append(f"{BACKEND_BASE}/static/generated/{out_path.name}")
-#                             except Exception as e:
-#                                 print("写入 base64 图片失败:", e)
-#                         continue
-
-#                     # 先尝试下载到本地静态目录（使用 safe filename）
-#                     local_url = download_to_generated(remote_url)
-#                     if local_url:
-#                         generated_urls.append(local_url)
-#                     else:
-#                         # 如果下载失败，仍然把远程 URL 返回给前端（前端可直接使用远端URL）
-#                         generated_urls.append(remote_url)
-
-#             except Exception as e:
-#                 print("解析生成结果失败:", e)
-
-#             results.append({"index": item_index, "prompt": prompt, "generated_urls": generated_urls})
-#         # 返回一个数组，前端按 index 对应处理
-#         return jsonify({"results": results})
-
-#     except Exception as e:
-#         print("generate-images 异常:", e)
-#         return jsonify({"error": str(e)}), 500
 @app.route('/generate-images', methods=['POST'])
 def generate_images():
     """
     接收前端传来的 sentence_pairs，对 prompt != null 的项调用 MultiImage2Image 生成图片。
     每个 item 的 photo 字段为 base64 字符串数组（参考图），取前4张作为 subject_imgs，
     第1张同时作为 style_img（传入 style_img 参数）。
+    【修改】使用 ThreadPoolExecutor 实现并行生成，提升效率。
     """
     try:
         payload = request.get_json()
@@ -250,80 +115,67 @@ def generate_images():
         if not pairs:
             return jsonify({"error": "no sentence_pairs"}), 400
 
+        # 共享实例与认证（✅ 避免每任务重复初始化）
         ig = MultiImage2Image()
-
         token = ig._encode_jwt_token()
         AUTHORIZATION = f"Bearer {token}"
         HEADERS = {"Content-Type": "application/json", "Authorization": AUTHORIZATION}
 
-        results = []
+        def extract_base64(dataurl_or_b64: str) -> str:
+            """内嵌辅助函数：提取 base64 字符串"""
+            if dataurl_or_b64.startswith("data:image"):
+                try:
+                    return dataurl_or_b64.split(",", 1)[1]
+                except IndexError:
+                    raise ValueError("Invalid data URL format")
+            return dataurl_or_b64
 
-        for idx, item in enumerate(pairs):
+        def process_single_pair(item):
+            """处理单个 sentence_pair，返回结果 dict（含 index）"""
+            idx = item.get("index", 0)  # 兼容无 index 字段
             prompt = item.get("prompt")
-            item_index = item.get("index", idx)
 
             if not prompt:
-                results.append({"index": item_index, "prompt": None, "generated_urls": [], "note": "no prompt"})
-                continue
+                return {
+                    "index": idx,
+                    "prompt": None,
+                    "generated_urls": [],
+                    "note": "no prompt"
+                }
 
-            # ✅【关键修改】处理 photo 数组：前端传的是 base64 字符串列表
-            photo_list = item.get("photo", [])  # List[str], each is base64 (data URL or pure b64)
+            photo_list = item.get("photo", [])
             if not isinstance(photo_list, list):
                 photo_list = []
 
-            # 若为空，无法生成（可灵要求至少2张主体图）
             if len(photo_list) < 2:
-                results.append({
-                    "index": item_index,
+                return {
+                    "index": idx,
                     "prompt": prompt,
                     "generated_urls": [],
                     "error": "subject_imgs must contain at least 2 images"
-                })
-                continue
+                }
 
-            # 取前4张
-            subject_photo_list = photo_list[:4]  # 最多4张
-
-            # 转为可灵要求的 subject_image_list 格式：[{"subject_image": b64_str}, ...]
-            # 注意：可灵 API 支持纯 base64 字符串（无需 "data:image/..." 前缀），但若含 dataurl 需处理
-            def extract_base64(dataurl_or_b64: str) -> str:
-                if dataurl_or_b64.startswith("data:image"):
-                    # 截取 base64 部分（跳过 MIME 头）
-                    try:
-                        b64_part = dataurl_or_b64.split(",", 1)[1]
-                        return b64_part
-                    except IndexError:
-                        raise ValueError("Invalid data URL format")
-                else:
-                    # 假设已是纯 base64（可灵接受）
-                    return dataurl_or_b64
-
+            subject_photo_list = photo_list[:4]
             try:
-                # 构建 subject_imgs：list of dict {"subject_image": b64_str}
                 subject_imgs = [
                     {"subject_image": extract_base64(img)} for img in subject_photo_list
                 ]
-
-                # style_img 使用第一张图的 base64 字符串（注意：是字符串，不是 dict）
                 style_img_b64 = extract_base64(subject_photo_list[0])
-                # 注意：MultiImage2Image.run() 中 style_img 传入的是字符串（支持 base64 或 URL）
-
             except Exception as e:
-                results.append({
-                    "index": item_index,
+                return {
+                    "index": idx,
                     "prompt": prompt,
                     "generated_urls": [],
                     "error": f"photo preprocessing failed: {str(e)}"
-                })
-                continue
+                }
 
-            # ✅ 调用 MultiImage2Image.run()
+            # 调用 Kling API（独立任务）
             try:
                 task_result = ig.run(
                     headers=HEADERS,
                     prompt=prompt,
-                    subject_imgs=subject_imgs,         # ✔️ 已为正确格式
-                    style_img=style_img_b64,           # ✔️ 第一张图的 base64 字符串
+                    subject_imgs=subject_imgs,
+                    style_img=style_img_b64,
                     model_name="kling-v2",
                     n=1,
                     aspect_ratio="3:4",
@@ -331,15 +183,14 @@ def generate_images():
                     interval=5
                 )
             except Exception as e:
-                results.append({
-                    "index": item_index,
+                return {
+                    "index": idx,
                     "prompt": prompt,
                     "generated_urls": [],
                     "error": f"kling run failed: {str(e)}"
-                })
-                continue
+                }
 
-            # ✅ 提取结果
+            # 解析结果 → 本地 URL
             generated_urls = []
             try:
                 data = task_result.get("data", {})
@@ -348,7 +199,22 @@ def generate_images():
                     remote_url = im.get("url")
                     if remote_url:
                         local_url = download_to_generated(remote_url)
-                        generated_urls.append(local_url or remote_url)
+                        if local_url:
+                            generated_urls.append(local_url)
+                        else:
+                            # fallback: 尝试直接下载保存
+                            try:
+                                resp = requests.get(remote_url, timeout=30)
+                                resp.raise_for_status()
+                                mime = resp.headers.get('content-type', 'image/jpeg')
+                                ext = '.jpg' if 'jpeg' in mime.lower() else '.png' if 'png' in mime.lower() else '.jpg'
+                                b64 = base64.b64encode(resp.content).decode()
+                                dataurl = f"data:{mime};base64,{b64}"
+                                fallback_path = dataurl_to_file(dataurl, filename=f"fallback_{uuid.uuid4().hex}{ext}")
+                                fallback_url = f"{BACKEND_BASE}/static/generated/{Path(fallback_path).name}"
+                                generated_urls.append(fallback_url)
+                            except Exception as ex:
+                                print(f"❌ fallback failed for {remote_url}: {ex}")
                     else:
                         b64 = im.get("b64") or im.get("base64")
                         if b64:
@@ -358,20 +224,51 @@ def generate_images():
                                 out_path.write_bytes(base64.b64decode(b64))
                                 generated_urls.append(f"{BACKEND_BASE}/static/generated/{out_path.name}")
                             except Exception as ex:
-                                print(f"Base64 save failed for item {item_index}:", ex)
+                                print(f"Base64 save failed:", ex)
             except Exception as e:
-                print(f"Parse result failed for item {item_index}:", e)
+                print(f"Parse result failed for index {idx}:", e)
 
-            results.append({
-                "index": item_index,
+            return {
+                "index": idx,
                 "prompt": prompt,
                 "generated_urls": generated_urls
-            })
+            }
+
+        # 🔥 并行处理：控制并发数 ≤5（Kling 实测安全上限）
+        results = [None] * len(pairs)
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            # 提交所有任务
+            future_to_index = {
+                executor.submit(process_single_pair, item): i
+                for i, item in enumerate(pairs)
+            }
+
+            # 收集结果（保持原始顺序）
+            for future in as_completed(future_to_index):
+                try:
+                    result = future.result()
+                    orig_idx = future_to_index[future]  # 在 pairs 中的原始位置（用于保序）
+                    results[orig_idx] = result
+                except Exception as e:
+                    # 极端异常兜底（如线程崩溃）
+                    print(f"⚠️ Thread crashed for item {future_to_index[future]}:", e)
+                    # 可选：填充空结果
+                    results[future_to_index[future]] = {
+                        "index": future_to_index[future],
+                        "prompt": None,
+                        "generated_urls": [],
+                        "error": f"thread exception: {str(e)}"
+                    }
+
+        # 移除 None（若未来出现未填充）
+        results = [r for r in results if r is not None]
 
         return jsonify({"results": results})
 
     except Exception as e:
         print("generate-images exception:", e)
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
     
 
@@ -626,9 +523,37 @@ def generate_prompts():
 
         # Step 1：调用 Qwen 分句+生成 prompt
         system_prompt_1 = """
-        你是一个叙事视觉设计助手。
-        请把用户给出的叙述文本合理分句，每句代表一个独立的视觉场景。
-        对每一句生成一个适合文生图的中文prompt（约20字，描述画面内容）。
+        你是一个专业的叙事视觉设计助手，擅长将叙述性文本转化为具备时空真实感的分镜式视觉场景序列。
+
+        请严格按以下规则处理输入文本：
+
+        1. 【按视觉场景切分】  
+        以“视觉场景的实质性变化”为唯一切分依据，包括：  
+        - 主体/人物更换  
+        - 空间/环境切换（如教室→操场）  
+        - 时间跃迁（如清晨→黄昏、1995年→2003年）  
+        - 关键动作或事件转折  
+        - 情绪/氛围的显著转变  
+        → 连续描述同一时空内细节、心理或静态状态的语句，必须合并为一句。
+
+        2. 【时空背景显式嵌入】  
+        每个prompt必须清晰包含**时代特征**与**地域文化语境**，例如：  
+        - 时间：1990年代、改革开放初期、千禧年前夕  
+        - 地点：中国北方军校校园、华东小城老街、复旦大学邯郸校区  
+        - 社会特征：绿皮火车、搪瓷杯、手写黑板报、军绿书包、CRT显示器等时代符号  
+        → 严禁出现时代错位元素（如90年代出现智能手机、玻璃幕墙高楼）或文化错配（如中国军校出现外国学生群像，除非原文明确提及）。
+
+        3. 【prompt生成规范】  
+        每条prompt约20字，聚焦可绘制内容，必须包含：  
+        - 主体（谁/什么）  
+        - 关键动作或状态  
+        - 具体环境（含时代+地域特征）  
+        - 光影/天气/氛围（增强叙事感）  
+        → 避免抽象词（如‘怀念’‘奋斗’），改用可视符号（如‘泛黄的笔记本摊在木课桌上’）。
+
+        4. 【叙事连贯性】  
+        所有prompt应构成逻辑连贯、情绪递进的视觉序列，服务于整体故事意图。
+
         严格输出 JSON 数组格式：
         [
             {"sentence": "一句叙述", "prompt": "一句中文prompt"},
@@ -756,8 +681,8 @@ def generate_prompts():
         print("⚠️ (generate-prompts) /generate-prompts 异常:", e)
         return jsonify({"error": str(e)}), 500
 
-UPLOADS_DIR = Path(__file__).parent / "static" / "uploads"
-UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+# UPLOADS_DIR = Path(__file__).parent / "static" / "uploads"
+# UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 @app.route('/upload-photo', methods=['POST'])
 def upload_photo():
@@ -785,10 +710,6 @@ def upload_photo():
 
 LOGS_DIR = Path(__file__).parent / "experiment_logs"
 LOGS_DIR.mkdir(exist_ok=True)
-
-# 图像存储根目录（与 upload / generate-images 一致）
-UPLOADS_DIR = Path(__file__).parent / "static" / "uploads"
-GENERATED_DIR = Path(__file__).parent / "static" / "generated"
 
 
 @app.route('/save-experiment-log', methods=['POST'])
@@ -876,49 +797,340 @@ def save_experiment_log():
             "message": str(e)
         }), 500
 
+UPLOADS_DIR = Path(__file__).parent / "static" / "uploads"
+GENERATED_DIR = Path(__file__).parent / "static" / "generated"
 
-def _resolve_local_path(url: str, base_dir: Path) -> Path | None:
+def _resolve_local_path(url: str, base_dirs: list[Path] = None) -> Path | None:
     """
-    将前端传来的 URL（绝对/相对/本地）解析为服务器本地 Path
-    支持：
-      - http://127.0.0.1:5000/static/uploads/xxx.jpg
-      - /static/uploads/xxx.jpg
-      - blob:http://... (不可解析 → None)
+    支持从 uploads / generated 任一目录按文件名查找
+    base_dirs 默认为 [UPLOADS_DIR, GENERATED_DIR]
+    【修复】新增 .jpg / .png 扩展名互查 fallback
     """
     if not url or not isinstance(url, str):
         return None
-
-    # 忽略 blob URL（前端应在 save 前转为本地路径）
-    if url.startswith("blob:"):
+    if url.startswith(("blob:", "data:")):
         return None
 
-    # 解析路径部分
+    if base_dirs is None:
+        base_dirs = [UPLOADS_DIR, GENERATED_DIR]
+
+    # 提取原始文件名（含扩展名）
     try:
-        parsed = urlparse(url)
-        path = unquote(parsed.path)
+        fname = os.path.basename(urlparse(unquote(url)).path)
+        if not fname or '.' not in fname:
+            return None
+        stem, orig_ext = os.path.splitext(fname)
+        orig_ext = orig_ext.lower()
+    except Exception as e:
+        print(f"[WARN] 解析 URL {url} 出错: {e}")
+        return None
 
-        # 移除 /static/ 前缀（如果存在）
-        if path.startswith("/static/"):
-            rel_path = path[len("/static/"):]
-        else:
-            rel_path = path.lstrip("/")
-
-        # 尝试拼接 base_dir (uploads 或 generated)
-        candidate = base_dir / rel_path
-        if candidate.exists() and candidate.is_file():
+    # 第一轮：原扩展名精确匹配
+    for base in base_dirs:
+        candidate = base / fname
+        if candidate.is_file():
+            print(f"✅ 路径解析成功 (精确匹配): {url} → {candidate}")
             return candidate
 
-        # 备用：直接按文件名在 base_dir 下查找（防路径偏移）
-        filename = os.path.basename(rel_path)
-        if filename:
-            fallback = base_dir / filename
-            if fallback.exists() and fallback.is_file():
-                return fallback
+    # 第二轮：扩展名 fallback —— .png ⇄ .jpg 互查
+    ext_fallbacks = []
+    if orig_ext == '.png':
+        ext_fallbacks = ['.jpg', '.jpeg']
+    elif orig_ext in ['.jpg', '.jpeg']:
+        ext_fallbacks = ['.png']
+    else:
+        ext_fallbacks = ['.jpg', '.png', '.jpeg']
 
-        return None
+    for ext in ext_fallbacks:
+        alt_fname = stem + ext
+        for base in base_dirs:
+            candidate = base / alt_fname
+            if candidate.is_file():
+                print(f"✅ 路径解析成功 (扩展名 fallback): {url} → {candidate} | 原名: {fname}")
+                return candidate
+
+    print(f"❌ 无法解析 URL → 本地路径: {url}，尝试文件名: {fname} 及 fallback 扩展名均失败")
+    return None
+
+def url_to_local(url: str) -> Path | None:
+    if url.startswith("http://127.0.0.1:5000/") or url.startswith("/"):
+        path_part = urlparse(url).path.lstrip("/")
+        if path_part.startswith("static/"):
+            rel = path_part[len("static/"):]
+            # 根据目录名判断应查 uploads 还是 generated
+            if rel.startswith("uploads/"):
+                return UPLOADS_DIR / rel[len("uploads/"):]
+            elif rel.startswith("generated/"):
+                return GENERATED_DIR / rel[len("generated/"):]
+    # fallback: 可能是纯文件名
+    fname = os.path.basename(urlparse(url).path)
+    for base in [UPLOADS_DIR, GENERATED_DIR]:
+        p = base / fname
+        if p.exists():
+            return p
+    return None
+
+@app.route('/generate-video', methods=['POST'])
+def generate_video():
+    if request.method == 'OPTIONS':
+        return ('', 204)
+
+    try:
+        data = request.get_json()
+        photo_urls = data.get("photos", [])
+        raw_prompts = data.get("prompts", [])
+
+        # ===== 参数标准化 =====
+        if isinstance(raw_prompts, str):
+            try:
+                prompts = json.loads(raw_prompts)
+            except:
+                prompts = [raw_prompts]
+        elif isinstance(raw_prompts, list):
+            prompts = raw_prompts
+        else:
+            prompts = [str(raw_prompts)]
+
+        if len(photo_urls) < 2:
+            return jsonify({"error": "photos 至少需要 2 张（AABB 格式）"}), 400
+        if len(photo_urls) % 2 != 0:
+            return jsonify({"error": "photos 长度必须为偶数（AABB...）"}), 400
+
+        # ✅ 分配唯一 task_id
+        task_id = str(uuid.uuid4())
+        video_tasks[task_id] = {
+            "status": "pending",
+            "videoUrl": None,
+            "error": None,
+            "start_time": time.time()
+        }
+
+        # ✅ 异步提交任务（非阻塞）
+        video_executor.submit(_run_video_generation_task, task_id, photo_urls, prompts)
+
+        # ✅ 立即返回
+        return jsonify({
+            "task_id": task_id,
+            "status": "submitted",
+            "message": "视频生成任务已提交，请轮询 /video-status/<task_id>"
+        })
+
     except Exception as e:
-        print(f"⚠️ _resolve_local_path error for {url}: {e}")
+        print("❌ /generate-video submit error:", e)
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+def _run_video_generation_task(task_id: str, photo_urls: list, prompts: list):
+    """独立任务函数：执行视频生成全流程"""
+    temp_dir = None
+    try:
+        # 更新状态
+        video_tasks[task_id]["status"] = "downloading"
+
+        # === 下载图片 ===
+        temp_dir = Path(tempfile.mkdtemp())
+        local_paths = []
+
+        for url in photo_urls:
+            local_path = _resolve_local_path(url, [UPLOADS_DIR, GENERATED_DIR])
+            if not local_path or not local_path.exists():
+                fname = sanitize_filename_from_url(url)
+                local_path = temp_dir / fname
+                try:
+                    resp = requests.get(url, stream=True, timeout=30)
+                    resp.raise_for_status()
+                    with open(local_path, "wb") as f:
+                        for chunk in resp.iter_content(8192):
+                            f.write(chunk)
+                except Exception as e:
+                    raise Exception(f"下载 {url} 失败: {e}")
+
+            # 强制转为 .jpg（兼容即梦）
+            if local_path.suffix.lower() not in ['.jpg', '.jpeg']:
+                try:
+                    from PIL import Image
+                    img = Image.open(local_path).convert("RGB")
+                    jpg_path = local_path.with_suffix('.jpg')
+                    img.save(jpg_path, "JPEG", quality=95)
+                    if jpg_path != local_path:
+                        local_path.unlink(missing_ok=True)
+                        local_path = jpg_path
+                except Exception as e:
+                    print(f"[Warn] 图片格式转换失败 {local_path}: {e}")
+
+            local_paths.append(str(local_path))
+
+        # === 调用 generate.py ===
+        video_tasks[task_id]["status"] = "generating"
+        output_filename = f"final_{uuid.uuid4().hex}.mp4"
+        output_path = GENERATED_DIR / output_filename
+
+        cmd = [
+            "python", "generate.py",
+            "--photos", *local_paths,
+            "--prompts", *prompts,
+            "--output", str(output_path)
+        ]
+
+        print(f"[Task {task_id[:6]}] 🔍 执行命令: {' '.join(cmd)}")
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=1200,
+            cwd=os.path.dirname(__file__)
+        )
+
+        if result.returncode != 0:
+            stderr_msg = (result.stderr or result.stdout)[:500]
+            raise Exception(f"generate.py 失败: {stderr_msg}")
+
+        if not output_path.exists():
+            raise Exception("视频文件未生成（路径不存在）")
+
+        video_url = f"{BACKEND_BASE}/static/generated/{output_filename}"
+        print(f"[Task {task_id[:6]}] ✅ 视频生成成功: {video_url}")
+
+        # ✅ 更新状态
+        video_tasks[task_id].update({
+            "status": "success",
+            "videoUrl": video_url,
+            "end_time": time.time()
+        })
+
+    except Exception as e:
+        error_msg = str(e)
+        print(f"[Task {task_id[:6]}] ❌ 视频生成失败:", error_msg)
+        import traceback
+        traceback.print_exc()
+        video_tasks[task_id].update({
+            "status": "failed",
+            "error": error_msg,
+            "end_time": time.time()
+        })
+
+    finally:
+        # ✅ 确保清理
+        if temp_dir and temp_dir.exists():
+            try:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            except Exception as e:
+                print(f"[Task {task_id[:6]}] 清理失败: {e}")
+
+@app.route('/video-status/<task_id>', methods=['GET'])
+def video_status(task_id: str):
+    task = video_tasks.get(task_id)
+    if not task:
+        return jsonify({"error": "task_id 不存在或已过期"}), 404
+
+    # 可选：自动清除超时任务（如 >1 小时）
+    now = time.time()
+    if task.get("start_time") and now - task["start_time"] > 3600:
+        video_tasks.pop(task_id, None)
+        return jsonify({"error": "任务已超时清理"}), 410
+
+    return jsonify({
+        "task_id": task_id,
+        "status": task["status"],  # pending → downloading → generating → success/failed
+        "videoUrl": task.get("videoUrl"),
+        "error": task.get("error"),
+        "elapsed": now - task["start_time"] if "start_time" in task else None
+    })
+
+# 调用Qwen为视频生成prompts
+@app.route('/refine-prompt', methods=['POST'])
+def refine_prompt():
+    """
+    新增字段：
+      type: "static" | "transition"
+    输入：
+      static:  sentence = 当前画面描述；prev/next 用于氛围衔接
+      transition: sentence + next_sentence = 起止画面；prev/post 用于过渡上下文
+    """
+    try:
+        data = request.get_json()
+        prompt_type = data.get("type", "transition")  # static / transition
+        sentence = data.get("sentence", "").strip()
+        next_sent = data.get("next_sentence", "").strip()
+        prev_sent = data.get("prev_sentence", "").strip()
+        post_sent = data.get("post_sentence", "").strip()
+
+        if prompt_type == "static":
+            system_prompt = """
+            你是一名专业影视分镜师，擅长将回忆转化为视频生成指令。
+            当前任务：为**单张静态照片**生成视频 prompt，表现「微动态」而非剧烈变化。
+            要求：
+            1. **必须包含**：人物微动作（如眨眼、嘴角微扬、衣角轻摆）、镜头微运动（缓慢推进/环绕）、氛围风格；
+            2. 控制在 10~20 字；
+            3. 避免「回忆」「时光」等抽象词，聚焦**画面内可观测元素**；
+            4. 仅输出 prompt，无标点结尾，无解释。
+            示例：
+            - 微笑凝视远方，发丝轻扬，镜头缓慢推进，暖色调胶片感
+            - 老人轻抚相框，手指微颤，浅景深，柔光怀旧风
+            """
+            content = f"画面描述：{sentence}"
+            if prev_sent or next_sent:
+                content += f"\n上下文：前{('「'+prev_sent+'」') if prev_sent else '无'}，后{('「'+next_sent+'」') if next_sent else '无'}"
+            content += "\n请生成静帧微动视频 prompt："
+
+        else:  # transition
+            system_prompt = """
+            你是一名专业影视分镜师，擅长设计镜头过渡。
+            当前任务：为**两张照片之间的切换**生成视频 prompt，表现自然、有叙事逻辑的过渡。
+            要求：
+            1. **必须包含**：过渡主体（如人物转身、视线移动）、镜头运动（平移/旋转/缩放）、过渡氛围；
+            2. 明确起止画面核心元素（如“从微笑→凝望”“从屋前→屋内”）；
+            3. 控制在 12~25 字；
+            4. 仅输出 prompt，无标点结尾，无解释。
+            示例：
+            - 人物缓缓转身，镜头平移跟随，从微笑切换为凝望远方
+            - 镜头拉远展现全景，从老屋门廊自然过渡到院中桂花树
+            """
+            content = f"起始画面：{sentence}\n结束画面：{next_sent}"
+            if prev_sent or post_sent:
+                content += f"\n前情：{prev_sent}" if prev_sent else ""
+                content += f"\n后续：{post_sent}" if post_sent else ""
+            content += "\n请生成画面过渡视频 prompt："
+
+        result = qwen.get_response(
+            prompt=content,
+            system_prompt=system_prompt,
+            model="qwen-max",
+            enable_image_input=False
+        )
+        refined = str(result).strip().rstrip("。！？,.，")
+        # 安全兜底
+        if not refined or len(refined) > 50:
+            refined = sentence[:12] + ('过渡' if prompt_type == 'transition' else '静帧')
+
+        return jsonify({"prompt": refined})
+
+    except Exception as e:
+        print("❌ /refine-prompt error:", e)
+        return jsonify({"error": str(e)}), 500    
+
+
+def download_to_generated(url, filename=None):
+    try:
+        if not filename:
+            filename = sanitize_filename_from_url(url)
+        out_path = GENERATED_DIR / filename
+        print(f"📥 尝试下载: {url} → {out_path}")
+        
+        with requests.get(url, stream=True, timeout=30) as r:
+            print(f"↔️ 响应状态: {r.status_code}, Content-Type: {r.headers.get('content-type', 'unknown')}")
+            r.raise_for_status()
+            with open(out_path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+        print(f"✅ 文件已保存: {out_path}")
+        return f"{BACKEND_BASE}/static/generated/{out_path.name}"
+    except Exception as e:
+        print(f"❌ 下载失败 (url={url}): {e}")
         return None
 
 if __name__ == '__main__':
-    app.run(debug=True, host='127.0.0.1', port=5000)
+    app.run(debug=False, host='127.0.0.1', port=5000)
