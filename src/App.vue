@@ -427,6 +427,50 @@
       </div>
     </div>
 
+    <div v-if="showPromptModal" class="suggestion-modal-backdrop">
+      <div class="suggestion-modal" style="width: 800px; max-height: 80vh; overflow-y: auto;">
+        <h3>🚀 确认生成指令 (Prompts)</h3>
+        <p style="font-size: 13px; color: #666; margin-bottom: 12px;">
+          AI 已根据您的叙述生成了以下画面指令。请检查并修改 Prompt，或删除重复/不需要的画面，以避免图像雷同。
+        </p>
+
+        <div v-if="pendingSentencePairs.length === 0" style="text-align:center; color:#999; padding:20px;">
+          没有可生成的 Prompts。
+        </div>
+
+        <div v-for="(item, idx) in pendingSentencePairs" :key="idx" class="prompt-edit-item" 
+             style="display:flex; gap:12px; border:1px solid #eee; padding:10px; margin-bottom:10px; border-radius:6px; align-items:flex-start;">
+          
+          <div style="width: 80px; flex-shrink:0;">
+             <img v-if="item.photo" :src="item.photo" style="width:100%; border-radius:4px; border:1px solid #ddd;">
+             <div v-else style="width:100%; height:80px; background:#f0f0f0; display:flex; align-items:center; justify-content:center; color:#ccc; font-size:10px;">纯文生图</div>
+          </div>
+
+          <div style="flex:1;">
+            <div style="font-size:12px; color:#555; margin-bottom:4px; font-weight:bold;">对应原句：</div>
+            <div style="font-size:13px; color:#333; margin-bottom:8px; background:#f9f9f9; padding:6px; border-radius:4px;">
+              {{ item.sentence || '(无)' }}
+            </div>
+            
+            <div style="font-size:12px; color:#555; margin-bottom:4px; font-weight:bold;">生成 Prompt (可修改)：</div>
+            <textarea v-model="item.prompt" rows="3" 
+                      style="width:100%; padding:6px; font-size:13px; border:1px solid #ddd; border-radius:4px; resize:vertical;"></textarea>
+          </div>
+
+          <button class="control-btn" @click="removePromptPair(idx)" style="color:red; border-color:#ffcccc; font-size:12px;">
+            🗑️ 删除
+          </button>
+        </div>
+
+        <div class="modal-actions" style="border-top:1px solid #eee; padding-top:12px; margin-top:12px;">
+          <button class="control-btn" @click="showPromptModal = false">取消</button>
+          <button class="control-btn primary" @click="confirmGenerateImages" :disabled="pendingSentencePairs.length === 0">
+            确认并生成图片 ({{ pendingSentencePairs.length }} 张)
+          </button>
+        </div>
+      </div>
+    </div>
+
       </aside>
     </div>
   </div>
@@ -501,32 +545,41 @@ export default {
       stage3Modifications: [],        // 记录 Stage3 的每次用户修改（timestamp, before, after）
       
       highlightedSentence: null, // ✅ [修改 C.2] 新增高亮状态
+      
+      // ✅ [Priority 1] Prompt 确认相关状态
+      showPromptModal: false,
+      pendingSentencePairs: [], // 暂存待用户确认的 pairs
+      pendingBase64Photos: [], // 暂存原始图片 base64，供生图使用
     }
   },
   computed: {
     // ✅ [修改 C.5] 新增 computed 属性用于高亮
     highlightedStoryText() {
-      // Get base texts and escape them for security before v-html
-      let text = this.escapeHtml(this.assistantIntegratedText || '');
-      const updatedText = this.escapeHtml(this.assistantUpdatedText || '');
+      // 1. 确定要显示的文本源
+      // 如果有 assistantUpdatedText，说明刚刚完成了更新（里面包含了紫色标签），直接使用它
+      // 否则使用 integratedText
+      let sourceText = this.assistantUpdatedText || this.assistantIntegratedText || '';
       
-      // Apply highlight if a sentence is hovered
-      if (this.highlightedSentence) {
-        const sentence = this.escapeHtml(this.highlightedSentence);
-        // Must escape the sentence for the regex to handle special chars
-        const regex = new RegExp(this.escapeRegExp(sentence), 'g'); // 'g' for all occurrences
-        // Use inline style for simplicity, avoiding scoped CSS issues with v-html
-        text = text.replace(regex, `<span style="background-color: #fff8c4; border-radius: 3px; padding: 1px 0;">${sentence}</span>`);
+      // 注意：如果是 UpdatedText，我们在 updateText 方法里已经处理过 HTML 标签了，所以这里不要再全量 escapeHtml
+      // 只有当显示纯 IntegratedText 时才需要防注入 (简单起见，假设后端返回是安全的，或者只对非HTML部分处理)
+      
+      // 简单的处理逻辑：
+      let text = sourceText; 
+      if (!this.assistantUpdatedText) {
+          text = this.escapeHtml(sourceText);
       }
-      
-      // Append the (already styled) updated text
-      if (updatedText) {
-        // Re-add the purple color span for the updated part
-        text += ` <span style="color:#667eea; margin-top: 5px; display: inline-block;">${updatedText}</span>`;
+
+      // 2. 处理鼠标悬停高亮 (Hover) - 仅针对非 HTML 标签部分的高亮会比较复杂
+      // 为简化逻辑，如果当前处于“查看更新结果”状态（有紫色文字），暂时禁用 Hover 高亮，以免 HTML 结构冲突
+      if (this.highlightedSentence && !this.assistantUpdatedText) {
+        const sentence = this.escapeHtml(this.highlightedSentence);
+        const regex = new RegExp(this.escapeRegExp(sentence), 'g');
+        text = text.replace(regex, `<span style="background-color: #fff8c4; border-radius: 3px; padding: 1px 0;">${sentence}</span>`);
       }
       
       return text;
     },
+
     progressPercentage() {
       if (this.currentStage === 4) {
         // ✅ [修改 B.1] 移除 maxIterations 依赖, 变成只增不减的进度
@@ -556,9 +609,19 @@ export default {
   },
   methods: {
     // ✅ [修改 C.5] 新增正则转义辅助函数
+    // 【新增】正则转义辅助函数
     escapeRegExp(string) {
-      // $& means the whole matched string
       return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
+    },
+
+    // 【新增】字符串相似度计算 (用于智能复用图片)
+    calculateSimilarity(str1, str2) {
+       if(!str1 || !str2) return 0;
+       const s1 = new Set(str1.split(''));
+       const s2 = new Set(str2.split(''));
+       const intersection = new Set([...s1].filter(x => s2.has(x)));
+       const union = new Set([...s1, ...s2]);
+       return intersection.size / union.size;
     },
     // ✅ [修改 C.3] 新增悬停处理方法
     onPhotoHover(idx) {
@@ -986,150 +1049,8 @@ export default {
         this.integrating = false;
       }
     },
-    // async generateImages() {
-    //   if (this.currentStage !== 3) {
-    //     alert("图像补全功能仅在 Stage 3 可用");
-    //     return;
-    //   }
-    //   console.log('开始获取文生图prompt...');
-    //   const narrative = this.assistantIntegratedText;
-    //   if (!narrative) {
-    //     alert("AI 整合结果为空，请先点击 [整合文本]");
-    //     return;
-    //   }
-    //   try {
-    //     // 1️⃣ 上传原始照片转 base64
-    //     const base64Photos = await Promise.all(
-    //       this.photos.map(photo => this.convertToBase64(photo.file))
-    //     );
-    //     // 2️⃣ 获取 Qwen 生成的 sentence_pairs
-    //     const response = await axios.post('http://127.0.0.1:5000/generate-prompts', {
-    //       photos: base64Photos,
-    //       narrative: narrative,
-    //     });
-    //     this.sentencePairs = response.data.sentence_pairs || [];
-    //     console.log('图文配对结果：', toRaw(this.sentencePairs));
-    //     this.sentencePairs.sort((a, b) => a.index - b.index);
-    //     alert("Qwen已完成分句与prompt生成");
 
-    //     // 3️⃣ 过滤出需要生成的 prompt
-    //     const toGenerate = this.sentencePairs.filter(p => p.prompt);
-    //     if (!toGenerate.length) {
-    //       alert("没有需要生成的 prompt，操作结束");
-    //       return;
-    //     }
-
-    //     this.aiPhotos = [];
-    //     this.allPhotos = []; // ✅ 清空，重新填充
-
-    //     // 4️⃣ 构建 payload：取前4张原图作参考（可灵要求 2~4 张）
-    //     const payloadToSend = toGenerate.map(item => ({
-    //       ...item,
-    //       photo: base64Photos.slice(0, 4)
-    //     }));
-
-    //     console.log(`[Stage 3] 准备发送 ${payloadToSend.length} 个生成任务...`);
-    //     const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
-    //       sentence_pairs: payloadToSend
-    //     }, { timeout: 600000 });
-
-    //     if (!(genResp.data && genResp.data.results)) {
-    //       console.error("generate-images 返回异常：", genResp.data);
-    //       alert("生成图片时出错，请查看控制台");
-    //       return;
-    //     }
-    //     const results = genResp.data.results;
-    //     console.log("生成图片结果：", results);
-    //     const BACKEND_BASE = "http://127.0.0.1:5000";
-
-    //     // ✅【关键】5️⃣ 用 for...of + await 替代 forEach —— 支持串行下载
-    //     const aiMap = {};
-    //     for (const res of results) {
-    //       const idx = res.index;
-    //       const urls = res.generated_urls || [];
-    //       if (!urls.length) continue; // 跳过失败项
-
-    //       let firstUrl = urls[0];
-
-    //       let finalUrl = firstUrl;
-    //       // 如果是可灵返回的完整 URL（如 http://127.0.0.1:5000/static/generated/xxx.jpg），直接用
-    //       if (firstUrl.includes('/static/')) {
-    //         finalUrl = firstUrl;
-    //       } else if (firstUrl.startsWith('/')) {
-    //         finalUrl = BACKEND_BASE + firstUrl;
-    //       } else if (!firstUrl.startsWith('http')) {
-    //         finalUrl = BACKEND_BASE + '/static/generated/' + firstUrl;
-    //       } else if (!firstUrl.startsWith("data:")) {
-    //         firstUrl = BACKEND_BASE + "/static/generated/" + firstUrl;
-    //       }
-    //       // data: URL 忽略（kling 不应返回）
-
-    //       const pair = this.sentencePairs.find(p => p.index === idx);
-    //       const aiObj = {
-    //         file: null,
-    //         url: firstUrl,
-    //         name: `ai_generated_${Date.now()}_${idx}.jpg`,
-    //         prompt: res.prompt || pair?.prompt || null,
-    //         origin_pair_index: idx,
-    //         sentence: pair?.sentence || null,
-    //         iterationLabel: `S3_Init`
-    //       };
-    //       this.aiPhotos.push(aiObj);
-    //       aiMap[idx] = aiObj;
-    //     }
-
-    //     // 6️⃣ ✅ 构建 allPhotos（严格按叙事顺序）
-    //     this.allPhotos = [];
-    //     this.sentencePairs.forEach(pair => {
-    //       const aiPhoto = aiMap[pair.index];
-
-    //       if (aiPhoto) {
-    //         this.allPhotos.push({
-    //           type: 'ai',
-    //           sourceIndex: pair.index,
-    //           url: aiPhoto.url,
-    //           prompt: aiPhoto.prompt,
-    //           sentence: pair.sentence
-    //         });
-    //       } else {
-    //         // fallback：找原图
-    //         let fallbackUrl = null;
-    //         if (pair.origin_pair_index !== undefined && this.photos[pair.origin_pair_index]) {
-    //           fallbackUrl = this.photos[pair.origin_pair_index].url;
-    //         } else if (this.photos.length > 0) {
-    //           fallbackUrl = this.photos[0].url;
-    //         }
-
-    //         if (fallbackUrl) {
-    //           this.allPhotos.push({
-    //             type: 'original',
-    //             sourceIndex: pair.index,
-    //             url: fallbackUrl,
-    //             sentence: pair.sentence
-    //           });
-    //         }
-    //       }
-    //     });
-
-    //     // 7️⃣ 记录历史
-    //     this.aiPhotosHistory.push({
-    //       timestamp: new Date().toISOString(),
-    //       type: 'batch',
-    //       iterationLabel: `S3_Init`,
-    //       count: results.length,
-    //       pairs: results.map(r => ({
-    //         index: r.index,
-    //         prompt: r.prompt,
-    //         urls: r.generated_urls
-    //       }))
-    //     });
-
-    //     alert("图像生成并更新完毕，已显示在 AI 增强照片区");
-    //   } catch (error) {
-    //     console.error("Error generating prompts or images:", error);
-    //     alert("生成图像时出错，请查看控制台");
-    //   }
-    // },
+    // ✅ [Priority 1] 拆分 generateImages：第一步，获取 Prompts 并打开确认框
     async generateImages() {
       if (this.currentStage !== 3) {
         alert("图像补全功能仅在 Stage 3 可用");
@@ -1147,31 +1068,57 @@ export default {
         const base64Photos = await Promise.all(
           this.photos.map(photo => this.convertToBase64(photo.file))
         );
+        this.pendingBase64Photos = base64Photos; // 暂存，供后续生图使用
 
         // 2️⃣ 获取 Qwen 生成的 sentence_pairs
         const response = await axios.post('http://127.0.0.1:5000/generate-prompts', {
           photos: base64Photos,
           narrative: narrative,
         });
-        this.sentencePairs = response.data.sentence_pairs || [];
-        console.log('图文配对结果：', toRaw(this.sentencePairs));
-        this.sentencePairs.sort((a, b) => a.index - b.index);
-        alert("Qwen已完成分句与prompt生成");
+        
+        let pairs = response.data.sentence_pairs || [];
+        pairs.sort((a, b) => a.index - b.index);
+        
+        // 过滤出需要生成的 prompt (photo == null 或 匹配分低)
+        // 并在界面上显示出来，让用户确认
+        this.sentencePairs = pairs; // 保存原始配对信息
+        
+        // 提取待生成列表，准备在 Modal 显示
+        // 注意：前端展示时，把 photo 也带上以便预览（如果有的话）
+        this.pendingSentencePairs = pairs.filter(p => p.prompt); 
+        
+        console.log("等待用户确认的 Prompts:", this.pendingSentencePairs);
+        this.showPromptModal = true; // 打开确认框
 
-        // 3️⃣ 过滤出需要生成的 prompt
-        const toGenerate = this.sentencePairs.filter(p => p.prompt);
-        if (!toGenerate.length) {
-          alert("没有需要生成的 prompt，操作结束");
-          return;
-        }
+      } catch (error) {
+        console.error("Error generating prompts:", error);
+        alert("生成 Prompts 时出错，请查看控制台");
+      }
+    },
 
-        this.aiPhotos = [];
-        this.allPhotos = [];
+    // ✅ [Priority 1] 用户删除不需要的 Prompt
+    removePromptPair(index) {
+      this.pendingSentencePairs.splice(index, 1);
+    },
 
-        // 4️⃣ 构建 payload：取前4张原图作参考（可灵要求 2~4 张）
+    // ✅ [Priority 1] 第二步：用户确认后，真正调用生图
+    async confirmGenerateImages() {
+      this.showPromptModal = false; // 关闭弹窗
+      
+      const toGenerate = this.pendingSentencePairs;
+      if (!toGenerate.length) {
+        alert("列表为空，未执行生成");
+        return;
+      }
+
+      this.aiPhotos = [];
+      this.allPhotos = [];
+
+      try {
+        // 4️⃣ 构建 payload：取前4张原图作参考
         const payloadToSend = toGenerate.map(item => ({
           ...item,
-          photo: base64Photos.slice(0, 4)
+          photo: this.pendingBase64Photos.slice(0, 4)
         }));
 
         console.log(`[Stage 3] 准备发送 ${payloadToSend.length} 个生成任务...`);
@@ -1189,49 +1136,38 @@ export default {
         console.log("生成图片结果：", results);
         const BACKEND_BASE = "http://127.0.0.1:5000";
 
-        // ✅【核心】5️⃣ 构建 aiMap，确保 url 是可持久访问的本地路径
+        // ✅【核心】5️⃣ 构建 aiMap
         const aiMap = {};
         for (const res of results) {
           const idx = res.index;
           const urls = res.generated_urls || [];
-          if (!urls.length) continue; // 跳过失败项
+          if (!urls.length) continue; 
 
           let firstUrl = urls[0];
-
-          // ✅【关键修复】统一规范化 URL：确保它指向 /static/generated/ 下的本地资源
           let finalUrl = '';
           if (firstUrl.includes('/static/')) {
-            // 已是本地路径（绝对或相对），补全为完整 URL
             if (firstUrl.startsWith('/')) {
               finalUrl = BACKEND_BASE + firstUrl;
             } else if (firstUrl.startsWith('http')) {
-              finalUrl = firstUrl; // 已完整，如 http://127.0.0.1:5000/static/...
+              finalUrl = firstUrl;
             } else {
-              // 纯路径如 "xxx.jpg" —— 不存在，但兜底处理
               finalUrl = BACKEND_BASE + '/static/generated/' + firstUrl;
             }
           } else if (firstUrl.startsWith('/')) {
             finalUrl = BACKEND_BASE + firstUrl;
           } else if (firstUrl.startsWith('http')) {
-            // ⚠️ 可能是可灵外链（如 oss.kling.ai/xxx.jpg）
-            // ❗ 但 /generate-images 已调用 download_to_generated，不应出现外部 URL
-            // 若出现，说明后端未保存成功 → 前端无法访问，应 fallback 或报错
             console.warn('⚠️ 检测到外部 URL（非 /static/），可能无法访问：', firstUrl);
-            // 这里可选：跳过 / 显示警告 / 交由后端统一处理（推荐）
-            // 我们选择：仍用它，但标记风险（真实项目应要求后端保证返回本地路径）
             finalUrl = firstUrl;
           } else if (!firstUrl.startsWith('data:')) {
-            // 假设是文件名
             finalUrl = BACKEND_BASE + '/static/generated/' + firstUrl;
           } else {
-            console.warn('⚠️ 忽略 data URL（不应出现）：', firstUrl);
             continue;
           }
 
           const pair = this.sentencePairs.find(p => p.index === idx);
           const aiObj = {
             file: null,
-            url: finalUrl, // ✅ 用 finalUrl，不是 firstUrl！
+            url: finalUrl,
             name: `ai_generated_${Date.now()}_${idx}.jpg`,
             prompt: res.prompt || pair?.prompt || null,
             origin_pair_index: idx,
@@ -1259,7 +1195,6 @@ export default {
             let fallbackUrl = null;
             if (pair.origin_pair_index !== undefined && this.photos[pair.origin_pair_index]) {
               fallbackUrl = this.photos[pair.origin_pair_index].url;
-              // 确保原图 URL 也是完整路径（上传时已返回 /static/uploads/...）
               if (fallbackUrl && fallbackUrl.startsWith('/')) {
                 fallbackUrl = BACKEND_BASE + fallbackUrl;
               }
@@ -1294,11 +1229,13 @@ export default {
         });
 
         alert("图像生成并更新完毕，已显示在 AI 增强照片区");
+
       } catch (error) {
-        console.error("Error generating prompts or images:", error);
-        alert("生成图像时出错，请查看控制台");
+        console.error("Error confirming images:", error);
+        alert("确认生成时出错");
       }
     },
+
     reselectText() {
       this.highlightedTexts = [];
       this.userNarratives[this.currentStage] = '';
@@ -1445,9 +1382,13 @@ export default {
           return;
         }
 
+        // ✅ [Priority 2] 传入当前完整叙事，供后端做上下文推理
+        const currentNarrative = this.assistantUpdatedText || this.assistantIntegratedText;
+
         const response = await axios.post('http://127.0.0.1:5000/generate-stage4-questions', {
           original_photos: base64Photos,
           ai_photos_urls: aiPhotoURLs,
+          narrative: currentNarrative, // ✅ 传入
         });
 
         this.stage4Questions = response.data.questions || [];
@@ -1477,7 +1418,7 @@ export default {
       }
 
       console.log("准备发往 /update-text 的 payload:", {
-        current_narrative: this.assistantIntegratedText,
+        current_narrative: this.assistantUpdatedText || this.assistantIntegratedText,
         new_qa_pairs: qa_pairs
       });
 
@@ -1505,14 +1446,16 @@ export default {
     },
 
     // ==========================================================
-    // === ❗️【已修复】HERE IS THE FIX ❗️ ===
+    // === ❗️【核心修复】智能复用逻辑 (Smart Reuse) ❗️ ===
     // ==========================================================
     async generateNewImagesFromNarrative() {
-      console.log('S4: 开始根据更新后的叙事文本生成新图片...');
-      const narrative = (this.assistantIntegratedText + '\n' + this.assistantUpdatedText).trim();
+      console.log('S4: 开始智能更新画面 (复用检测)...');
+      
+      // ✅ 获取最新的全量文本
+      const narrative = this.assistantUpdatedText || this.assistantIntegratedText;
 
-      if (!narrative || !this.assistantUpdatedText) {
-        alert("AI 叙事没有更新，请先回答问题并[整合文本]");
+      if (!narrative) {
+        alert("AI 叙事为空，请先整合文本");
         return;
       }
 
@@ -1520,127 +1463,149 @@ export default {
         const base64Photos = await Promise.all(
           this.photos.map(photo => this.convertToBase64(photo.file))
         );
+
+        // 1. 获取新故事的分镜 Prompts
         const response = await axios.post('http://127.0.0.1:5000/generate-prompts', {
           photos: base64Photos,
           narrative: narrative,
         });
 
-        let newSentencePairs = response.data.sentence_pairs || [];
-        
-        // ✅ [ Bug 修复点 ]
-        // 过滤出所有带 prompt 的新句子
-        const toGenerateWithPrompts = newSentencePairs.filter(p => p.prompt);
+        const newSentencePairs = response.data.sentence_pairs || [];
+        const toGenerate = [];
+        const nextRoundAiPhotos = [];
+        const BACKEND_BASE = "http://127.0.0.1:5000";
 
-        if (toGenerateWithPrompts.length > 0) {
-          console.log(`[Stage 4 Fix] 找到了 ${toGenerateWithPrompts.length} 个新 prompt，附加参考图后发送...`);
+        // 2. 遍历新分镜，尝试复用
+        console.log(`[Smart Reuse] 收到 ${newSentencePairs.length} 个新分镜，开始比对...`);
 
-          // ✅ [修改]
-          // 将原始照片(base64Photos)数组附加到 *每一个* // 需要生成的 item 的 'photo' 字段上，以供后端参考
-          const payloadToSend = toGenerateWithPrompts.map(item => ({
+        newSentencePairs.forEach(pair => {
+            // Case A: 对应原图 (无需处理，后续构建 allPhotos 会处理)
+            if (!pair.prompt) return; 
+
+            // Case B: 需要 AI 生成 -> 尝试在 aiPhotos 中找相似 Prompt
+            let bestMatch = null;
+            let maxScore = 0;
+
+            for (const oldP of this.aiPhotos) {
+                // 跳过无 Prompt 的图
+                if (!oldP.prompt) continue;
+                
+                const score = this.calculateSimilarity(pair.prompt, oldP.prompt);
+                if (score > maxScore) {
+                    maxScore = score;
+                    bestMatch = oldP;
+                }
+            }
+
+            // 阈值判定: 相似度 > 0.6 视为同一场景，复用图片
+            if (maxScore > 0.6 && bestMatch) {
+                console.log(`♻️ 复用: 新句[${pair.index}] 与旧句[${bestMatch.origin_pair_index}] 相似度 ${maxScore.toFixed(2)}`);
+                nextRoundAiPhotos.push({
+                    ...bestMatch, // 继承 URL, file, name
+                    index: pair.index, // 更新为新的索引
+                    origin_pair_index: pair.index,
+                    sentence: pair.sentence, // 更新为新的句子文本
+                    prompt: pair.prompt, // 更新为新的 Prompt (以便下轮对比)
+                    iterationLabel: bestMatch.iterationLabel + '(Keep)' // 标记复用
+                });
+            } else {
+                console.log(`🆕 新增: 新句[${pair.index}] 无匹配 (MaxScore ${maxScore.toFixed(2)}), 需生成`);
+                toGenerate.push(pair);
+            }
+        });
+
+        // 3. 生成不可复用的新图
+        if (toGenerate.length > 0) {
+          console.log(`[Smart Reuse] 需新生成 ${toGenerate.length} 张图片...`);
+
+          // 附加参考图
+          const payloadToSend = toGenerate.map(item => ({
               ...item,
-              photo: base64Photos // 关键：添加原始照片
+              photo: base64Photos 
           }));
           
           const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
-            sentence_pairs: payloadToSend // ✅ 发送修正后的 payload
+            sentence_pairs: payloadToSend
           }, { timeout: 600000 });
 
-          if (!(genResp.data && genResp.data.results)) {
-            console.error("S4 generate-images 返回异常：", genResp.data);
-            alert("S4 生成图片时出错，请查看控制台");
-            return;
+          if (genResp.data && genResp.data.results) {
+             const results = genResp.data.results;
+             
+             results.forEach(res => {
+                const pairFromAll = toGenerate.find(p => p.index === res.index);
+                const urls = res.generated_urls || [];
+                if (!urls.length) return;
+
+                let firstUrl = urls[0];
+                if (firstUrl.startsWith("/")) {
+                  firstUrl = BACKEND_BASE + firstUrl;
+                } else if (!firstUrl.startsWith("http")) {
+                  firstUrl = BACKEND_BASE + "/static/generated/" + firstUrl;
+                }
+
+                nextRoundAiPhotos.push({
+                  file: null,
+                  url: firstUrl,
+                  name: `ai_gen_s4_${Date.now()}_${res.index}.jpg`,
+                  prompt: res.prompt,
+                  iterationLabel: `Iter ${this.iterationCount + 1}`,
+                  sentence: pairFromAll?.sentence || null,
+                  origin_pair_index: res.index
+                });
+             });
           }
-
-          const results = genResp.data.results;
-          const BACKEND_BASE = "http://127.0.0.1:5000";
-
-          const beforeNarrative = this.assistantIntegratedText;
-          const beforePhotos = [...this.aiPhotos.map(p => ({ url: p.url, prompt: p.prompt }))];
-
-          results.forEach(res => {
-            const idx = res.index; 
-            
-            // 从完整的 newSentencePairs 列表中查找
-            const pairFromAll = newSentencePairs.find(p => p.index === idx);
-
-            const urls = res.generated_urls || [];
-            if (!urls.length) {
-                console.warn(`[Stage 4] Index ${idx} (Prompt: ${pairFromAll?.prompt}) 未能生成 URL。`);
-                return; // 跳过生成失败的
-            }
-            let firstUrl = urls[0];
-            if (firstUrl.startsWith("/")) {
-              firstUrl = BACKEND_BASE + firstUrl;
-            } else if (!firstUrl.startsWith("http://") && !firstUrl.startsWith("https://")) {
-              firstUrl = BACKEND_BASE + "/static/generated/" + firstUrl;
-            }
-
-            const aiObj = {
-              file: null,
-              url: firstUrl,
-              name: `ai_generated_s4_${Date.now()}_${idx}.jpg`,
-              prompt: res.prompt || pairFromAll?.prompt || null,
-              iterationLabel: `Iter ${this.iterationCount}`,
-              sentence: pairFromAll?.sentence || null 
-            };
-
-            this.aiPhotos.push(aiObj); // ✅ 直接 push 新图片
-
-            // Sync to allPhotos
-            this.allPhotos.push({
-              type: 'ai',
-              sourceIndex: idx,
-              url: aiObj.url,
-              prompt: aiObj.prompt,
-              sentence: aiObj.sentence,
-              iterationLabel: aiObj.iterationLabel
-            });
-
-            // ✅ 单图生成记录
-            this.aiPhotosHistory.push({
-              timestamp: new Date().toISOString(),
-              type: 'iteration',
-              iterationLabel: `Iter ${this.iterationCount}`,
-              index: idx,
-              prompt: aiObj.prompt,
-              url: aiObj.url
-            });
-          });
-
-          // 迭代收尾
-          this.assistantIntegratedText = (this.assistantIntegratedText + '\n' + this.assistantUpdatedText).trim();
-          this.iterationCount += 1;
-          this.assistantUpdatedText = '';
-          this.aiSuggestion = '';
-          this.stage4Questions = [];
-          this.currentQuestionIndex = 0;
-
-          const afterNarrative = this.assistantIntegratedText;
-          const afterPhotos = [...this.aiPhotos.map(p => ({ url: p.url, prompt: p.prompt }))];
-
-          // ✅ 记录迭代事件
-          this.stage4Iterations.push({
-            iterNum: this.iterationCount - 1,
-            time: new Date().toISOString(),
-            trigger: 'auto',
-            narrativeBefore: beforeNarrative,
-            narrativeAfter: afterNarrative,
-            photosBefore: beforePhotos,
-            photosAfter: afterPhotos,
-            newPrompts: payloadToSend.map(p => p.prompt), // ✅ [修复]
-            generatedCount: results.length
-          });
-
-        } else {
-           console.log("[Stage 4 Fix] /generate-prompts 未返回任何带 prompt 的新句子，跳过生成。");
-           // 如果没有新图生成，也要合并文本
-           this.assistantIntegratedText = (this.assistantIntegratedText + '\n' + this.assistantUpdatedText).trim();
-           this.iterationCount += 1; // 仍然消耗一次迭代
-           this.assistantUpdatedText = '';
-           this.aiSuggestion = '';
-           this.stage4Questions = [];
-           this.currentQuestionIndex = 0;
         }
+
+        // 4. 更新状态
+        this.iterationCount += 1;
+        
+        // 按 index 排序，保证视觉顺序正确
+        nextRoundAiPhotos.sort((a,b) => (a.origin_pair_index || 0) - (b.origin_pair_index || 0));
+        
+        this.aiPhotos = nextRoundAiPhotos;
+        
+        // 重新构建 allPhotos (用于视频生成)
+        this.allPhotos = [];
+        newSentencePairs.forEach(pair => {
+            // 找 AI 图
+            const aiP = this.aiPhotos.find(p => p.origin_pair_index === pair.index);
+            if (aiP) {
+                this.allPhotos.push({
+                   type: 'ai',
+                   sourceIndex: pair.index,
+                   url: aiP.url,
+                   prompt: aiP.prompt,
+                   sentence: aiP.sentence
+                });
+            } else {
+                // 找原图 Fallback
+                if (this.photos[pair.index]) {
+                   this.allPhotos.push({
+                      type: 'original',
+                      sourceIndex: pair.index,
+                      url: this.photos[pair.index].url,
+                      sentence: pair.sentence
+                   });
+                } else if (this.photos[0]) {
+                   this.allPhotos.push({
+                      type: 'original',
+                      sourceIndex: pair.index,
+                      url: this.photos[0].url,
+                      sentence: pair.sentence
+                   });
+                }
+            }
+        });
+
+        // ✅ 确认文本变更：把 Purple Text 变正文
+        this.assistantIntegratedText = narrative;
+        this.assistantUpdatedText = ''; 
+        this.aiSuggestion = '';
+        this.stage4Questions = [];
+        this.currentQuestionIndex = 0;
+
+        alert(`画面更新完成！复用了 ${nextRoundAiPhotos.length - toGenerate.length} 张，新生成 ${toGenerate.length} 张。`);
+
       } catch (error) {
         console.error("Error in generateNewImagesFromNarrative:", error);
         alert("S4: 根据叙事更新图像时出错，请查看控制台");
@@ -2652,7 +2617,6 @@ export default {
   box-shadow: none;
   opacity: 0.7;
 }
-
 
 .narrative-input {
   width: 100%;
