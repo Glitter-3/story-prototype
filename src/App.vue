@@ -1083,29 +1083,40 @@ export default {
         // 并在界面上显示出来，让用户确认
         this.sentencePairs = pairs; // 保存原始配对信息
         
-        // 提取待生成列表，准备在 Modal 显示
-        // 注意：前端展示时，把 photo 也带上以便预览（如果有的话）
-        this.pendingSentencePairs = pairs.filter(p => p.prompt); 
+        // 提取待生成列表 (过滤掉不需要 Prompt 的原图匹配项)
+        const toGenerate = pairs.filter(p => p.prompt); 
         
+        console.log("将自动生成 Prompts:", toGenerate);
+        
+        /* // 【原 Prompt 确认流程 - 已注释】
+        this.pendingSentencePairs = pairs.filter(p => p.prompt); // 暂存待用户确认的 pairs
         console.log("等待用户确认的 Prompts:", this.pendingSentencePairs);
         this.showPromptModal = true; // 打开确认框
+        */
+
+        // 💡 【核心修改】直接调用 confirmGenerateImages 并传入待生成列表
+        await this.confirmGenerateImages(toGenerate); 
 
       } catch (error) {
         console.error("Error generating prompts:", error);
         alert("生成 Prompts 时出错，请查看控制台");
       }
     },
-
+    /*
     // ✅ [Priority 1] 用户删除不需要的 Prompt
     removePromptPair(index) {
       this.pendingSentencePairs.splice(index, 1);
     },
+    */
 
     // ✅ [Priority 1] 第二步：用户确认后，真正调用生图
-    async confirmGenerateImages() {
+    // 💡 【核心修改】接受 toGenerate 参数，否则使用 this.pendingSentencePairs (兼容Stage4的手动更新)
+    async confirmGenerateImages(passedToGenerate) { 
+      /* // 【原 Prompt 确认流程 - 已注释】
       this.showPromptModal = false; // 关闭弹窗
+      */
       
-      const toGenerate = this.pendingSentencePairs;
+      const toGenerate = passedToGenerate || this.pendingSentencePairs; 
       if (!toGenerate.length) {
         alert("列表为空，未执行生成");
         return;
