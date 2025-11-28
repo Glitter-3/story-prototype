@@ -6,10 +6,8 @@ import jwt
 import re
 
 # ================== 配置区 ==================
-# ACCESS_KEY = "ANhJAaJEBmMdJJdfGPK3BYBYMDCfYrpM"  # 填写access key
-# SECRET_KEY = "EDfPJMEJKneGLJR49TfaGRdNTdCyr88R"  # 填写secret key
-ACCESS_KEY = "AaQQDaB3BYKamYfQgCNyhHCHREMMrtfN"
-SECRET_KEY = "Em4pdyTBCYgnLCRm3HteFfyh38Ch9NgY"
+ACCESS_KEY= "A44R99bKdgnHaHAaC98Q9G3TamDAQabg"
+SECRET_KEY= "nC93mKGPM8Jn3bN33BmGbkJMNPBkB9Fh"
 API_BASE_URL = "https://api-beijing.klingai.com"  # API域名
 
 
@@ -166,7 +164,7 @@ class ImageGenerator:
         image_path="",
         model_name="kling-v2",
         n=1,
-        aspect_ratio="3:4",
+        aspect_ratio="16:9",
         callback_url=None,
         max_wait=300,
         interval=10
@@ -278,7 +276,7 @@ class MultiImage2Image:
         style_img=None,
         model_name="kling-v2",
         n=1,
-        aspect_ratio="3:4",
+        aspect_ratio="16:9",
         callback_url=None,
         external_task_id=None,
         headers=None
