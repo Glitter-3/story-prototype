@@ -319,23 +319,32 @@ def generate_images():
 
 @app.route('/generate-questions', methods=['POST'])
 def generate_questions():
-    """Stage 2: 事实性提问 (Priority 2)"""
+    """Stage 2: 引导式提问 """
     try:
         data = request.get_json()
         photos = data.get('photos', [])
         narratives = data.get('narratives', '')
 
         system_prompt = """
-            你是一名专业的纪录片导演兼视觉档案员。
-            任务：根据照片和文字，生成帮助用户还原客观场景细节的问题。
-            严禁行为：禁止询问情感、意义、心情。
-            提问原则：
-            1. 聚焦视觉事实（时间、地点、物体、穿搭、天气）。
-            2. 挖掘画面外信息。
-            3. 确认模糊细节。
-            输出：JSON 数组 [{"text": "...", "answer": "", "answered": false, "showInput": false}]
+            你是一名专业的记忆研究助理。
+            你的任务是：根据用户提供的照片和文字描述，生成帮助用户回忆的开放性问题。
+            要求：
+            1. 严格输出 JSON 数组。
+            2. 数组中每个元素是对象，必须包含字段：
+            - text: 问题内容
+            - answer: 空字符串
+            - answered: false
+            - showInput: false
+            3. 不要生成回答，只输出问题。
+            4. 语言使用中文。
+            5. 提问的维度可以包括时间、地点、人物、场景、情感等。
+            示例：
+            [
+            {"text": "请描述这张照片中的人物是谁？", "answer": "", "answered": false, "showInput": false},
+            {"text": "照片中的场景对你意味着什么？", "answer": "", "answered": false, "showInput": false}
+            ]
             """
-        prompt = f"用户文字：\n{narratives}\n请结合图片生成事实性问题。"
+        prompt = f"用户提供的文字内容如下：\n{narratives}\n请结合上述内容和用户上传的照片生成一系列问题，严格遵守 system_prompt 中的 JSON 输出格式。"
 
         result = qwen.get_response(prompt=prompt, system_prompt=system_prompt, image_path_list=photos, model="qwen-vl-max", enable_image_input=True)
         
@@ -422,16 +431,24 @@ def generate_stage4_questions():
             return jsonify({"questions": []})
 
         system_prompt = """
-            你是一名视觉侦探。任务：对比“用户故事”与“AI生成的画面”，找出不一致或潜在线索。
-            核心策略：【猜测 + 求证】
-            不要问宽泛的“你想到什么？”，必须结合图片元素提出假设。
-            例如：
-            - "AI生成的图片背景有座灯塔，当时岸边是否有这样的建筑？"
-            - "图中大家在奔跑，这是否就是你提到的那场大雨？"
-            
-            输出格式：JSON 数组 [{"text": "...", "answer": "", "answered": false, "showInput": false}]
+            你是一名专业的视觉迭代助理。
+            你的任务是：根据用户提供的*原始照片*和*当前AI生成的照片*，生成 3-5 个引导性问题，帮助用户*补充叙事细节*。
+            要求：
+            1. 严格输出 JSON 数组。
+            2. 数组中每个元素是对象，必须包含字段：
+            - text: 问题内容
+            - answer: 空字符串
+            - answered: false
+            - showInput: false
+            3. 问题应聚焦于*叙事*，例如询问关于 "AI 生成的图像" 中新出现的 "元素"、"氛围" 或 "动作" 的相关回忆。
+            4. 语言使用中文。
+            示例：
+            [
+            {"text": "AI 生成的这张图片中，光线看起来很柔和，这让您想起了当时具体的时间或天气吗？", "answer": "", "answered": false, "showInput": false},
+            {"text": "这张 AI 图片额外生成了一些背景细节，这是否让您回忆起关于这个地点的更多故事？", "answer": "", "answered": false, "showInput": false}
+            ]
             """
-        prompt = f"故事：\n{narrative}\n\n请结合参考图片提出猜测性问题。"
+        prompt = f"故事：\n{narrative}\n\n请仔细对比原始照片和 AI 生成的照片，针对 AI 生成图片中的新内容或氛围，提问 3-5 个具体问题，帮助用户回忆更多相关的故事或细节。严格遵守 system_prompt 中的 JSON 输出格式。"
         
         # 发送请求 (all_images 全是 base64，Qwen 能够接收)
         result = qwen.get_response(
