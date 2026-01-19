@@ -122,6 +122,19 @@
                     @click="openSuggestionModal(idx)"
                     :disabled="iterationStopped"> ✏️ 建议
                   </button>
+
+                  <div class="ai-photo-controls" style="display:flex; gap:4px; width:100%; margin-top:4px;">
+                    <button 
+                      class="edit-photo-btn" 
+                      @click="openSuggestionModal(idx)"
+                      :disabled="iterationStopped"> ✏️ 指令
+                    </button>
+                    <button 
+                      class="edit-photo-btn" 
+                      style="color: #ff4d4f; border-color: #ffccc7;"
+                      @click="deleteAiPhoto(idx)"> 🗑️ 删除
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -602,7 +615,7 @@
 
         <div class="modal-actions" style="border-top:1px solid #eee; padding-top:12px; margin-top:12px;">
           <button class="control-btn" @click="showPromptModal = false">取消</button>
-          <button class="control-btn primary" @click="confirmGenerateImages" :disabled="pendingSentencePairs.length === 0">
+          <button class="control-btn primary" @click="confirmGenerateImages()" :disabled="pendingSentencePairs.length === 0">
             确认并生成图片 ({{ pendingSentencePairs.length }} 张)
           </button>
         </div>
@@ -1560,8 +1573,9 @@ export default {
         this.showPromptModal = true; // 打开确认框
         */
 
-        // 💡 【核心修改】直接调用 confirmGenerateImages 并传入待生成列表
-        await this.confirmGenerateImages(toGenerate); 
+       // 💡 【核心修改】不再自动生成，而是打开确认弹窗供用户查看/修改
+      this.pendingSentencePairs = toGenerate; 
+      this.showPromptModal = true;
 
       } catch (error) {
         console.error("Error generating prompts:", error);
@@ -2126,8 +2140,8 @@ export default {
           this.photos.slice(0, 4).map(p => this.convertToBase64(p.file))
         );
 
-        // ✅ 合成新 prompt（原 prompt + 用户建议）
-        const newPrompt = `${photo.prompt}, ${suggestion}`;
+        // ✅ 直接使用用户在弹窗中修改后的完整指令
+        const newPrompt = suggestion;
 
         // ✅ 构造 sentence_pairs：photo 字段必须是 string[]（base64 data URLs）
         const manual_sentence_pairs = [{
@@ -2214,7 +2228,7 @@ export default {
     },
     openSuggestionModal(index) {
       this.suggestionForPhotoIndex = index;
-      this.currentSuggestionText = '';
+      this.currentSuggestionText = this.aiPhotos[index].prompt || '';
       this.showSuggestionModal = true;
     },
     startResizeAiResult(e) {
@@ -2241,6 +2255,26 @@ export default {
     },
     getLetterIndex(idx) {
       return String.fromCharCode(97 + idx);
+    },
+    deleteAiPhoto(idx) {
+      // 1. 弹出确认框，防止误删
+      if (confirm(`确定要删除这张 AI 生成的照片 ${this.getLetterIndex(idx)} 吗？`)) {
+        
+        // 获取要删除的照片对象，方便后面在 allPhotos 中比对
+        const photoToDelete = this.aiPhotos[idx];
+
+        // 2. 从 aiPhotos 数组中删除 (影响当前页面展示)
+        // splice 会从索引 idx 开始删除 1 个元素
+        this.aiPhotos.splice(idx, 1);
+
+        // 3. 从 allPhotos 数组中同步删除 (影响 Stage 5 视频生成)
+        // 我们过滤掉 url 相同的项，确保生成的视频序列里不再有这张图
+        if (this.allPhotos && this.allPhotos.length > 0) {
+          this.allPhotos = this.allPhotos.filter(p => p.url !== photoToDelete.url);
+        }
+
+        console.log(`已成功删除照片 ${this.getLetterIndex(idx)}，并同步更新了视频序列数据。`);
+      }
     },
 
 
