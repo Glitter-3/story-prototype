@@ -6,8 +6,8 @@ import jwt
 import re
 
 # ================== 配置区 ==================
-ACCESS_KEY= "A44R99bKdgnHaHAaC98Q9G3TamDAQabg"
-SECRET_KEY= "nC93mKGPM8Jn3bN33BmGbkJMNPBkB9Fh"
+ACCESS_KEY= "AmKBJKMnLnREmL8GAyHyynKPBDPkr3gH"
+SECRET_KEY= "ekyDnkyeyNbyGLAe4nGgthQCBayhJLJF"
 API_BASE_URL = "https://api-beijing.klingai.com"  # API域名
 
 
