@@ -159,6 +159,78 @@ def upload_photo():
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 
+import tempfile
+import shutil
+
+@app.route('/group-photos-by-time', methods=['POST'])
+def group_photos_by_time():
+    """
+    Stage 1: 对用户上传的照片按时间进行分组（可基于Qwen-VL视觉分析或用户口述）
+    """
+    try:
+        data = request.get_json()
+        photos = data.get('photos', [])  # base64 列表
+        narrative = data.get('narrative', '')  # 用户口述（可选）
+
+        if not photos:
+            return jsonify({"error": "No photos provided"}), 400
+
+        # 构造Qwen提示词，要求对照片按时间顺序分组
+        system_prompt = """
+        你是一位视觉记忆分析师。现在用户提供若干张照片和可能的文字口述。
+        你的任务是对这些照片按**时间顺序**划分为若干组（每组代表一个阶段或事件），
+        并为每组起一个简短的时间阶段名称（如“童年时期”、“大学时光”、“疫情居家”等）。
+
+        要求：
+        1. 每张照片只能属于一个组。
+        2. 按时间从前到后排序。
+        3. 输出严格为 JSON 格式，结构如下：
+        {
+          "groups": [
+            {
+              "name": "阶段名称",
+              "photo_indices": [0, 1, 2]  // 照片在输入列表中的索引
+            },
+            ...
+          ]
+        }
+        4. 如果无法判断时间顺序，请按上传顺序分组，每张照片一组。
+        """
+
+        prompt = f"用户口述（如有）：{narrative}\n\n请分析以下照片的时间顺序并分组。"
+
+        # 调用 Qwen-VL（启用图片输入）
+        response = qwen.get_response(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            image_path_list=photos,
+            model="qwen-vl-max",
+            enable_image_input=True
+        )
+
+        # 提取 JSON
+        try:
+            text_output = response if isinstance(response, str) else response.get("output", {}).get("text", "")
+            match = re.search(r'\{.*\}', text_output, re.DOTALL)
+            result = json.loads(match.group(0)) if match else {"groups": []}
+        except Exception as e:
+            print("JSON解析失败，使用兜底方案：每张图一组")
+            result = {
+                "groups": [
+                    {"name": f"阶段 {i+1}", "photo_indices": [i]}
+                    for i in range(len(photos))
+                ]
+            }
+
+        return jsonify(result)
+
+    except Exception as e:
+        print("group-photos-by-time error:", e)
+        import traceback
+        traceback.print_exc()  # 打印完整错误堆栈
+        return jsonify({"error": str(e)}), 500
+    
+
 @app.route('/generate-prompts', methods=['POST'])
 def generate_prompts():
     """
@@ -319,45 +391,387 @@ def generate_images():
         print("generate-images error:", e)
         return jsonify({"error": str(e)}), 500
 
+# @app.route('/generate-questions', methods=['POST'])
+# def generate_questions():
+#     """Stage 2: 引导式提问 """
+#     try:
+#         data = request.get_json()
+#         photos = data.get('photos', [])
+#         narratives = data.get('narratives', '')
+
+#         system_prompt = """
+#             你是一名专业的记忆研究助理。
+#             你的任务是：根据用户提供的照片和文字描述，生成帮助用户回忆的开放性问题。
+#             要求：
+#             1. 严格输出 JSON 数组。
+#             2. 数组中每个元素是对象，必须包含字段：
+#             - text: 问题内容
+#             - answer: 空字符串
+#             - answered: false
+#             - showInput: false
+#             3. 不要生成回答，只输出问题。
+#             4. 语言使用中文。
+#             5. 提问的维度可以包括时间、地点、人物、场景、情感等。
+#             示例：
+#             [
+#             {"text": "请描述这张照片中的人物是谁？", "answer": "", "answered": false, "showInput": false},
+#             {"text": "照片中的场景对你意味着什么？", "answer": "", "answered": false, "showInput": false}
+#             ]
+#             """
+#         prompt = f"用户提供的文字内容如下：\n{narratives}\n请结合上述内容和用户上传的照片生成一系列问题，严格遵守 system_prompt 中的 JSON 输出格式。"
+
+#         result = qwen.get_response(prompt=prompt, system_prompt=system_prompt, image_path_list=photos, model="qwen-vl-max", enable_image_input=True)
+        
+#         try:
+#             match = re.search(r'\[.*\]', str(result), re.DOTALL)
+#             questions = json.loads(match.group(0)) if match else []
+#         except: questions = []
+
+#         return jsonify({"questions": questions})
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
+
 @app.route('/generate-questions', methods=['POST'])
 def generate_questions():
-    """Stage 2: 引导式提问 """
+    """
+    Stage 2: 基于照片分组的引导式提问生成
+    """
     try:
         data = request.get_json()
-        photos = data.get('photos', [])
+
+        photo_groups = data.get('photoGroups', [])
         narratives = data.get('narratives', '')
 
-        system_prompt = """
-            你是一名专业的记忆研究助理。
-            你的任务是：根据用户提供的照片和文字描述，生成帮助用户回忆的开放性问题。
-            要求：
-            1. 严格输出 JSON 数组。
-            2. 数组中每个元素是对象，必须包含字段：
-            - text: 问题内容
-            - answer: 空字符串
-            - answered: false
-            - showInput: false
-            3. 不要生成回答，只输出问题。
-            4. 语言使用中文。
-            5. 提问的维度可以包括时间、地点、人物、场景、情感等。
-            示例：
-            [
-            {"text": "请描述这张照片中的人物是谁？", "answer": "", "answered": false, "showInput": false},
-            {"text": "照片中的场景对你意味着什么？", "answer": "", "answered": false, "showInput": false}
-            ]
-            """
-        prompt = f"用户提供的文字内容如下：\n{narratives}\n请结合上述内容和用户上传的照片生成一系列问题，严格遵守 system_prompt 中的 JSON 输出格式。"
+        # -------- 1. 展平所有照片，供 Qwen 使用 --------
+        all_photos = []
+        for g in photo_groups:
+            all_photos.extend(g.get("photos", []))
 
-        result = qwen.get_response(prompt=prompt, system_prompt=system_prompt, image_path_list=photos, model="qwen-vl-max", enable_image_input=True)
-        
+        # -------- 2. 给模型看的分组结构（只含语义） --------
+        groups_for_prompt = []
+        for idx, g in enumerate(photo_groups):
+            groups_for_prompt.append({
+                "group_id": idx,
+                "title": g.get("name", f"分组{idx+1}"),
+                "photo_count": len(g.get("photos", []))
+            })
+
+        print("\n📤 ===== INPUT TO QWEN =====")
+        print("🧩 Groups:")
+        print(json.dumps(groups_for_prompt, ensure_ascii=False, indent=2))
+        print("📝 Narratives:")
+        print(narratives)
+        print("🖼️ Total photos:", len(all_photos))
+        print("================================\n")
+
+        # -------- 3. System Prompt --------
+        system_prompt = """
+你是一名专业的记忆研究与人生叙事引导助理。
+
+你的任务是：
+基于【用户的照片分组结构】、【照片内容】以及【已有文字口述】，生成有助于用户回忆与讲述人生故事的引导式问题。
+
+请遵循以下原则：
+
+一、问题类型
+
+1. 组内提问（type = "intra"）
+- 针对单个照片分组（人生阶段 / 章节）内部
+- 提问维度可参考（但不要求全部覆盖）：
+  人物（Who）、时间（When）、地点（Where）、事件（What）、情感与感受
+- 并非每个分组都必须提问
+- 每个分组只提出你认为“最关键、最有价值”的 2–4 个问题即可
+
+2. 组间提问（type = "inter"）
+- 针对相邻或逻辑相关的两个分组
+- 不重复具体照片细节
+- 重点关注：
+  人生阶段之间的动因、转折、选择、影响或内在变化
+
+二、重要约束
+- 按照时间阶段提问。即第一组组内问题优先，接着是第一组与第二组的组间问题，然后是第二组组内问题，依此类推。
+- 4W + 情感只是参考维度，而不是检查表
+- 你需要根据具体照片内容与分组主题自行判断：
+  是否需要提问、问什么、问多少
+- 总共提出 8-10 个问题（组内 + 组间）
+- 提问的答案汇总起来得到的信息需要能完整连缀整个故事，明确回答人物（Who）、时间（When）、地点（Where）、事件（What）、情感与感受。
+
+三、输出格式（必须严格遵守）
+- 只输出一个 JSON 数组
+- 每个元素是一个对象，字段如下：
+
+{
+  "type": "intra" | "inter",
+
+  "group_id": number | null,
+  "left_group_id": number | null,
+  "right_group_id": number | null,
+
+  "text": string,
+  "answer": "",
+  "answered": false,
+  "showInput": false
+}
+
+字段约束说明（必须遵守）：
+- 如果 type = "intra"：
+  - group_id 必须为对应分组的 group_id
+  - left_group_id 与 right_group_id 必须为 null
+
+- 如果 type = "inter"：
+  - group_id 必须为 null
+  - left_group_id 与 right_group_id 必须分别填写两个相关分组的 group_id
+
+- 不输出任何解释性文字
+- 不生成回答
+- 使用中文
+"""
+        prompt = f"""
+以下是用户整理后的照片分组结构：
+
+{json.dumps(groups_for_prompt, ensure_ascii=False, indent=2)}
+
+用户已有的文字口述如下：
+{narratives}
+
+请生成引导式回忆问题。
+"""
+
+        # -------- 4. 调用 Qwen --------
+        result = qwen.get_response(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            image_path_list=all_photos,
+            model="qwen-vl-max",
+            enable_image_input=True
+        )
+
+        print("\n📥 ===== RAW QWEN OUTPUT =====")
+        print(result)
+        print("================================\n")
+
+        # -------- 5. 解析 JSON --------
         try:
             match = re.search(r'\[.*\]', str(result), re.DOTALL)
             questions = json.loads(match.group(0)) if match else []
-        except: questions = []
+        except Exception as e:
+            print("❌ JSON parse error:", e)
+            questions = []
+
+        print("\n✅ ===== PARSED QUESTIONS =====")
+        print(json.dumps(questions, ensure_ascii=False, indent=2))
+        print("================================\n")
 
         return jsonify({"questions": questions})
+
     except Exception as e:
+        print("❌ Backend error:", e)
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/summarize-group-memory', methods=['POST'])
+def summarize_group_memory():
+    """
+    Stage 2:
+    基于某一个照片分组内的 QA，
+    总结该分组的 Who / When / Where / What / Emotion
+    """
+    try:
+        data = request.get_json()
+
+        group_id = data.get("group_id")
+        group_title = data.get("group_title", "")
+        qa_pairs = data.get("qa_pairs", [])
+
+        if group_id is None or not qa_pairs:
+            return jsonify({
+                "summary": {
+                    "who": "",
+                    "when": "",
+                    "where": "",
+                    "what": "",
+                    "emotion": ""
+                }
+            })
+
+        # -------- 1. 组织 QA 文本（给模型看的） --------
+        qa_text = []
+        for i, qa in enumerate(qa_pairs, start=1):
+            q = qa.get("question", "").strip()
+            a = qa.get("answer", "").strip()
+            if q and a:
+                qa_text.append(f"{i}. 问题：{q}\n   回答：{a}")
+
+        qa_block = "\n".join(qa_text)
+
+        print("\n📤 ===== GROUP MEMORY INPUT =====")
+        print(f"Group {group_id}: {group_title}")
+        print(qa_block)
+        print("================================\n")
+
+        # -------- 2. System Prompt（非常关键） --------
+        system_prompt = """
+你是一名记忆研究与人生叙事分析助手。
+
+你的任务是：
+基于用户在某一人生阶段（一个照片分组）中的问答内容，
+提炼该阶段的关键信息摘要。
+
+请从以下五个维度进行总结：
+1. Who：重要人物（不需要列所有人，只保留关键人物）
+2. When：时间背景（如人生阶段、时间段）
+3. Where：地点或环境（学校、城市、场景）
+4. What：核心事件或经历（最有代表性的）
+5. Emotion：主要情绪或情感基调
+
+重要约束：
+- 只能基于给定问答内容总结
+- 不允许编造未出现的信息
+- 如果某一维度信息不足，请返回空字符串 ""
+- 每个维度用 1–2 句话概括即可
+- 使用中文
+
+输出格式（必须严格遵守，只输出 JSON）：
+
+{
+  "who": "",
+  "when": "",
+  "where": "",
+  "what": "",
+  "emotion": ""
+}
+"""
+
+        # -------- 3. User Prompt --------
+        prompt = f"""
+当前照片分组标题：{group_title}
+
+用户在该分组下的问答如下：
+{qa_block}
+
+请基于以上内容进行总结。
+"""
+
+        # -------- 4. 调用 Qwen（一次即可） --------
+        result = qwen.get_response(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model="qwen-max"  # 这里不需要 VL
+        )
+
+        print("\n📥 ===== RAW SUMMARY OUTPUT =====")
+        print(result)
+        print("================================\n")
+
+        # -------- 5. 解析 JSON --------
+        summary = {
+            "who": "",
+            "when": "",
+            "where": "",
+            "what": "",
+            "emotion": ""
+        }
+
+        try:
+            match = re.search(r'\{.*\}', str(result), re.DOTALL)
+            if match:
+                parsed = json.loads(match.group(0))
+                for k in summary.keys():
+                    if k in parsed and isinstance(parsed[k], str):
+                        summary[k] = parsed[k].strip()
+        except Exception as e:
+            print("❌ Summary parse error:", e)
+
+        print("\n✅ ===== PARSED SUMMARY =====")
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+        print("================================\n")
+
+        return jsonify({"summary": summary})
+
+    except Exception as e:
+        print("❌ summarize-group-memory error:", e)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/summarize-inter-group', methods=['POST'])
+def summarize_inter_group():
+    """
+    Stage 2:
+    基于相邻两个分组之间的 inter QA，
+    总结一段“叙事过渡 / 转折 / 发展”的简短文字
+    """
+    try:
+        data = request.get_json()
+
+        left_title = data.get("left_group_title", "")
+        right_title = data.get("right_group_title", "")
+        qa_pairs = data.get("qa_pairs", [])
+
+        if not qa_pairs:
+            return jsonify({"text": ""})
+
+        qa_text = []
+        for i, qa in enumerate(qa_pairs, start=1):
+            q = qa.get("question", "").strip()
+            a = qa.get("answer", "").strip()
+            if q and a:
+                qa_text.append(f"{i}. 问题：{q}\n   回答：{a}")
+
+        qa_block = "\n".join(qa_text)
+
+        system_prompt = """
+你是一名人生叙事与记忆结构分析助手。
+
+你的任务是：
+基于用户在两个相邻人生阶段之间的问答内容，
+总结一段“承上启下”的叙事性过渡文字。
+
+这段文字应当：
+- 用于连接前一个阶段与后一个阶段
+- 强调变化、转折、发展或情绪流动
+- 不重复具体细节
+- 不超过 2–3 句话
+- 使用中文
+- 不编造未出现的信息
+
+输出格式（严格，只输出 JSON）：
+
+{
+  "text": ""
+}
+"""
+
+        prompt = f"""
+前一阶段标题：{left_title}
+后一阶段标题：{right_title}
+
+用户在这两个阶段之间的问答如下：
+{qa_block}
+
+请生成一段简短的阶段过渡总结。
+"""
+
+        result = qwen.get_response(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model="qwen-max"
+        )
+
+        text = ""
+        try:
+            match = re.search(r'\{.*\}', str(result), re.DOTALL)
+            if match:
+                parsed = json.loads(match.group(0))
+                text = parsed.get("text", "").strip()
+        except Exception as e:
+            print("❌ Inter summary parse error:", e)
+
+        return jsonify({"text": text})
+
+    except Exception as e:
+        print("❌ summarize-inter-group error:", e)
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/integrate-text', methods=['POST'])
 def integrate_text():

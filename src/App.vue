@@ -1,5 +1,5 @@
 <template>
-  <div class="photo-story-container">
+  <div class="photo-story-container" :class="`stage-${currentStage}`">
     <header class="app-header">
       <div class="header-left">
         <div class="logo">
@@ -35,7 +35,7 @@
 
     <div class="main-content">
       <section class="content-area" ref="contentArea">
-        <div class="photo-panel" :style="{ height: photoPanelHeight + 'px' }">
+        <div v-if="currentStage !== 2" class="photo-panel" :style="{ height: photoPanelHeight + 'px' }">
           <div class="panel-header">
             <h2>📷 照片面板</h2>
             <div class="panel-controls">
@@ -49,12 +49,15 @@
               />
               <button button v-if="currentStage === 1" class="control-btn" @click="addPhoto">➕ 添加照片</button>
               <button button v-if="currentStage === 1" class="control-btn" @click="confirmUpload">确认上传图片</button>
+              <button v-if="currentStage === 1" class="control-btn" @click="groupPhotosByTime" :disabled="photos.length === 0 || groupingInProgress">
+                {{ groupingInProgress ? '分组中…' : '照片分组' }}
+              </button>
 
             </div>
           </div>
           <div v-if="currentStage !== 3 && currentStage !== 4 && currentStage !== 5" class="photo-grid">
             <div class="photo-slot" v-for="(photo, index) in photos" :key="index">
-              <div class="photo-placeholder" @click="triggerFileInput(index)" v-if="currentStage === 1">
+              <div class="photo-placeholder" draggable="currentStage === 1" @dragstart="currentStage === 1 && onPhotoDragStart($event, idx)" @click="triggerFileInput(index)" v-if="currentStage === 1">
                 <template v-if="photo.url">
                   <img :src="photo.url" class="photo-preview" alt="预览图片" />
                 </template>
@@ -64,7 +67,7 @@
                 </template>
               </div>
 
-              <div class="photo-placeholder" v-else>
+              <div class="photo-placeholder" draggable="currentStage === 1" @dragstart="currentStage === 1 && onPhotoDragStart($event, idx)" v-else>
                 <template v-if="photo.url">
                   <img :src="photo.url" class="photo-preview" alt="预览图片" />
                 </template>
@@ -173,15 +176,150 @@
           </div>
 
         </div>
+        <!-- Stage 1 分组结果展示 -->
+        <div v-if="(currentStage === 1 || currentStage === 2) && showGroups" class="group-section">
+          <h3 style="margin: 16px 0; font-size:15px; color:#333;">🕒 照片分组结果</h3>
+          <div v-for="(group, gIdx) in photoGroups" :key="gIdx">
+            <div class="group-block" @dragover="onGroupDragOver" @drop="onGroupDrop($event, gIdx)">
+              <div
+                class="group-title"
+                :style="{ cursor: currentStage === 1 ? 'pointer' : 'default' }"
+                @click="currentStage === 1 && editGroupName(gIdx)"
+                title="点击修改标题"
+              >
+                {{ group.name }}
+              </div>
+              <!-- Stage 2：五维记忆总结 -->
+              <div
+                v-if="currentStage === 2 && groupSummaries[gIdx]"
+                class="group-summary"
+              >
+                <div class="summary-header">
+                  <strong>🧠 记忆总结</strong>
+
+                  <div class="summary-actions">
+                    <button
+                      v-if="!groupSummaries[gIdx].isEditing"
+                      class="control-btn"
+                      @click="startEditGroupSummary(gIdx)"
+                    >
+                      修改
+                    </button>
+
+                    <template v-else>
+                      <div class="inter-edit-actions">
+                        <button @click="confirmEditGroupSummary(gIdx)"> 确认 </button>
+                        <button @click="cancelEditGroupSummary(gIdx)"> 取消 </button>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+                <div v-if="!groupSummaries[gIdx].isEditing">
+                  <div class="summary-item"><strong> 人物：</strong>{{ groupSummaries[gIdx].data.who || '—' }}</div>
+                  <div class="summary-item"><strong> 时间：</strong>{{ groupSummaries[gIdx].data.when || '—' }}</div>
+                  <div class="summary-item"><strong> 地点：</strong>{{ groupSummaries[gIdx].data.where || '—' }}</div>
+                  <div class="summary-item"><strong> 事件：</strong>{{ groupSummaries[gIdx].data.what || '—' }}</div>
+                  <div class="summary-item"><strong> 情感：</strong>{{ groupSummaries[gIdx].data.emotion || '—' }}</div>
+                </div>
+            
+                <div v-else class="summary-edit">
+                  <div class="summary-edit-item">
+                    <label>👤 人物</label>
+                    <input v-model="groupSummaries[gIdx].editBuffer.who" />
+                  </div>
+
+                  <div class="summary-edit-item">
+                    <label>⏰ 时间</label>
+                    <input v-model="groupSummaries[gIdx].editBuffer.when" />
+                  </div>
+
+                  <div class="summary-edit-item">
+                    <label>📍 地点</label>
+                    <input v-model="groupSummaries[gIdx].editBuffer.where" />
+                  </div>
+
+                  <div class="summary-edit-item">
+                    <label>📖 事件</label>
+                    <textarea v-model="groupSummaries[gIdx].editBuffer.what" rows="2" />
+                  </div>
+
+                  <div class="summary-edit-item">
+                    <label>💗 情感</label>
+                    <input v-model="groupSummaries[gIdx].editBuffer.emotion" />
+                  </div>
+                </div>
+              </div>
+
+
+              <div class="photo-grid">
+                <div class="photo-slot" v-for="idx in group.photo_indices" :key="idx">
+                  <div class="photo-placeholder" draggable="true" @dragstart="onPhotoDragStart($event, idx)">
+                    <img v-if="photos[idx]?.url" :src="photos[idx].url" class="photo-preview" />
+                    <span v-else class="photo-number">{{ idx + 1 }}</span>
+                  </div>
+                </div>
+              </div>
+              <button v-if="currentStage === 1" class="control-btn" @click="addNewGroupAfter(gIdx)"> ➕ 在此分组后新建</button>
+              <button v-if="currentStage === 1" class="control-btn danger" @click="deleteGroup(gIdx)">  🗑 删除分组</button>
+            </div>
+            <!-- ✅ 组间过渡：插在两个 group-block 之间 -->
+            <div
+              v-if="
+                currentStage === 2 &&
+                interGroupSummaries[`${gIdx}-${gIdx + 1}`]
+              "
+              class="inter-group-block"
+            >
+              <div class="inter-header">
+                <strong>⏳ 阶段过渡</strong>
+
+                <div class="summary-actions">
+                  <button
+                    v-if="!interGroupSummaries[`${gIdx}-${gIdx + 1}`].isEditing"
+                    class="control-btn"
+                    @click="startEditInterGroupSummary(gIdx, gIdx + 1)"
+                  >
+                    修改
+                  </button>
+
+                  <template v-else>
+                    <div class="inter-edit-actions">  
+                      <button @click="confirmEditInterGroupSummary(gIdx, gIdx + 1)"> 确认 </button>
+                      <button @click="cancelEditInterGroupSummary(gIdx, gIdx + 1)"> 取消 </button>
+                    </div>
+                  </template>
+                </div>
+              </div>
+
+              <!-- 📄 展示态 -->
+              <div
+                v-if="!interGroupSummaries[`${gIdx}-${gIdx + 1}`].isEditing"
+                class="inter-summary-text"
+              >
+                {{ interGroupSummaries[`${gIdx}-${gIdx + 1}`].data.text || '—' }}
+              </div>
+
+              <!-- ✏️ 编辑态 -->
+              <div v-else>
+                <textarea
+                  v-model="interGroupSummaries[`${gIdx}-${gIdx + 1}`].editBuffer.text"
+                  class="inter-edit-textarea"
+                />
+              </div>
+            </div>
+
+          </div>
+        </div>
 
         <div 
+          v-if="currentStage !== 2"
           class="resize-handle" 
           @mousedown="startResize"
           :class="{ 'resizing': isResizing }">
        <div class= "handle-line"></div>
         </div>
 
-        <div class="narrative-section" :style="{ flex: 1 }">
+        <div v-if="currentStage != 2" class="narrative-section" :style="{ flex: 1 }">
           <div class="panel-header">
             <h3>📝 用户口述</h3>
             <div class="panel-controls">
@@ -521,6 +659,8 @@ export default {
       userNarratives: { 1: '', 2: '', 3: '', 4: '', 5: '' },
       currentQuestionIndex: 0,
       questions: [],
+      groupSummaries: {},
+      interGroupSummaries: {}, 
       sentencePairs: [],
       stage4Questions: [],
       assistantUpdatedText: '',
@@ -535,6 +675,9 @@ export default {
       suggestionForPhotoIndex: null,
       currentSuggestionText: '',
       isUpdatingPhoto: false,
+      photoGroups: [], // 保存分组结果 [{ name: '...', photoIndices: [...] }]
+      showGroups: false,  
+      groupingInProgress: false,
       // 视频生成状态
       isGeneratingVideo: false,
       videoGenerationError: null,
@@ -553,6 +696,19 @@ export default {
     }
   },
   computed: {
+    interQuestionsMap() {
+      const map = {};
+      this.questions.forEach(q => {
+        if (q.type === "inter" &&
+            q.left_group_id != null &&
+            q.right_group_id != null) {
+          const key = `${q.left_group_id}-${q.right_group_id}`;
+          if (!map[key]) map[key] = [];
+          map[key].push(q);
+        }
+      });
+      return map;
+    },
     // ✅ [修改 C.5] 新增 computed 属性用于高亮
     highlightedStoryText() {
       // 1. 确定要显示的文本源
@@ -670,6 +826,10 @@ export default {
       if (!this.stageTimestamps[stage]) {
         this.stageTimestamps[stage] = new Date().toISOString();
       }
+      if (stage === 2 && this.photoGroups.length === 0) {
+        alert('请先在 Stage 1 完成照片分组');
+        return;
+      }
       this.currentStage = stage;
 
       if (stage > 1 && !this.userNarratives[stage]) {
@@ -696,7 +856,61 @@ export default {
       }
       if (stage === 2) {
         this.currentQuestionIndex = 0;
+
+        /* ===============================
+        * 1️⃣ 组内（groupSummaries）初始化
+        * =============================== */
+        if (!this.groupSummaries || typeof this.groupSummaries !== 'object') {
+          this.groupSummaries = {};
+        }
+
+        this.photoGroups.forEach((g, gIdx) => {
+          if (!this.groupSummaries[gIdx]) {
+            this.groupSummaries[gIdx] = {
+              data: {
+                who: "",
+                when: "",
+                where: "",
+                what: "",
+                emotion: ""
+              },
+              editBuffer: {
+                who: "",
+                when: "",
+                where: "",
+                what: "",
+                emotion: ""
+              },
+              isEditing: false,
+              lastUpdatedBy: 'init'
+            };
+          }
+        });
+
+        /* ===============================
+        * 2️⃣ 组间（interGroupSummaries）初始化
+        * =============================== */
+        if (!this.interGroupSummaries || typeof this.interGroupSummaries !== 'object') {
+          this.interGroupSummaries = {};
+        }
+
+        for (let i = 0; i < this.photoGroups.length - 1; i++) {
+          const key = `${i}-${i + 1}`;
+          if (!this.interGroupSummaries[key]) {
+            this.interGroupSummaries[key] = {
+              data: {
+                text: ""
+              },
+              editBuffer: {
+                text: ""
+              },
+              isEditing: false,
+              lastUpdatedBy: 'init'
+            };
+          }
+        }
       }
+
       if (stage === 3) {
         this.assistantUpdatedText = '';
       }
@@ -862,30 +1076,282 @@ export default {
         return;
       }
     },
-    async fetchQuestions() {
-      console.log('开始获取问题...')
-      if (this.currentStage === 2) {
-        try {
-          const base64Photos = await Promise.all(
-            this.photos.map(photo => this.convertToBase64(photo.file))
-          );
-          const response = await axios.post('http://127.0.0.1:5000/generate-questions', {
-            photos: base64Photos,
-            narratives: this.userNarratives[1],
-          });
-          this.questions = response.data.questions || [];
-          this.currentQuestionIndex = 0;
+    async groupPhotosByTime() {
+      if (this.photos.length === 0) return;
+      this.groupingInProgress = true;
+      try {
+        const base64Photos = await Promise.all(
+          this.photos.map(photo => this.convertToBase64(photo.file))
+        );
+        const narrative = this.userNarratives[1] || '';
+        const resp = await axios.post('http://127.0.0.1:5000/group-photos-by-time', {
+          photos: base64Photos,
+          narrative: narrative
+        });
+        if (resp.data.groups) {
+          this.photoGroups = resp.data.groups;
+          this.showGroups = true;
+        } else {
+          alert('分组失败，请重试');
+        }
+      } catch (err) {
+        console.error('分组出错:', err);
+        alert('分组时发生错误，请查看控制台');
+      } finally {
+        this.groupingInProgress = false;
+      }
+    },
+    addNewGroupAfter(gIdx) {
+      const name = prompt('请输入新分组名称');
+      if (!name) return;
 
-          this.stage2QA = this.questions.map((q, idx) => ({
-            stage: 2,
-            index: idx,
-            question: q.text,
-            fetchedTime: new Date().toISOString()
-          }));
-        } catch (error) {
-          console.error("Error fetching questions:", error);
+      this.photoGroups.splice(gIdx + 1, 0, {
+        name: name.trim(),
+        photo_indices: []
+      });
+    },
+    deleteGroup(groupIndex) {
+      const groups = this.photoGroups;
+
+      if (groups.length === 1) {
+        alert("至少需要保留一个分组");
+        return;
+      }
+
+      const deletedGroup = groups[groupIndex];
+
+      const targetIndex = groupIndex > 0
+        ? groupIndex - 1
+        : groupIndex + 1;
+
+      const targetGroup = groups[targetIndex];
+
+      // 合并照片
+      targetGroup.photo_indices = [
+        ...targetGroup.photo_indices,
+        ...deletedGroup.photo_indices
+      ];
+
+      // 排序（可选）
+      targetGroup.photo_indices.sort((a, b) => a - b);
+
+      // 删除分组
+      groups.splice(groupIndex, 1);
+    },
+    editGroupName(index) {
+      const oldName = this.photoGroups[index].name;
+      const newName = prompt('修改分组名称：', oldName);
+      if (newName === null || newName.trim() === '') return;
+      this.photoGroups[index].name = newName.trim()
+    },
+    onPhotoDragStart(event, photoIndex) {
+      event.dataTransfer.setData('text/plain', String(photoIndex));
+      event.dataTransfer.effectAllowed = 'move';
+    },
+    onGroupDrop(event, targetGroupIndex) {
+      event.preventDefault();
+      const photoIndexStr = event.dataTransfer.getData('text/plain');
+      const photoIndex = parseInt(photoIndexStr, 10);
+      if (isNaN(photoIndex)) return;
+
+      const targetGroup = this.photoGroups[targetGroupIndex];
+
+      // 如果已在该组，不重复添加
+      if (targetGroup.photo_indices.includes(photoIndex)) return;
+
+      // 从原分组移除（如果存在）
+      for (const group of this.photoGroups) {
+        const i = group.photo_indices.indexOf(photoIndex);
+        if (i !== -1) {
+          group.photo_indices.splice(i, 1);
+          break;
         }
       }
+
+      // 添加到目标分组
+      targetGroup.photo_indices.push(photoIndex);
+    },
+    onGroupDragOver(event) {
+      event.preventDefault(); // 必须！否则 drop 不会触发
+      event.dataTransfer.dropEffect = 'move';
+    },
+
+    async fetchQuestions() {
+      if (this.currentStage !== 2) return;
+      if (this.photoGroups.length === 0) {
+        console.error('photoGroups is empty, abort fetchQuestions');
+        return;
+      }
+      try {
+        const groupsPayload = await Promise.all(
+          this.photoGroups.map(async (group, groupIdx) => {
+            const groupPhotos = await Promise.all(
+              group.photo_indices.map(idx =>
+                this.convertToBase64(this.photos[idx].file)
+              )
+            );
+
+            return {
+              group_id: groupIdx,
+              name: group.name,
+              photo_indices: group.photo_indices,
+              photos: groupPhotos
+            };
+          })
+        );
+
+        console.log("📤 Sending to backend:", {
+          photoGroups: groupsPayload,
+          narratives: this.userNarratives[1]
+        });
+
+        const response = await axios.post(
+          'http://127.0.0.1:5000/generate-questions',
+          {
+            photoGroups: groupsPayload,
+            narratives: this.userNarratives[1]
+          }
+        );
+
+        this.questions = response.data.questions || [];
+        this.currentQuestionIndex = 0;
+
+        console.log("📥 Questions from backend:", this.questions);
+
+      } catch (err) {
+        console.error("Error fetching grouped questions:", err);
+      }
+    },
+
+    async updateGroupSummary(question) {
+      if (question.type === "intra") {
+        await this.updateIntraGroupSummary(question)
+      } else if (question.type === "inter") {
+        await this.updateInterGroupSummary(question)
+      }
+    },
+    async updateIntraGroupSummary(question) {
+      const groupId = question.group_id
+      if (!this.photoGroups[groupId]) return
+
+      const answeredQs = this.getAnsweredIntraQuestionsByGroup(groupId)
+      if (answeredQs.length === 0) return
+
+      // 用户正在编辑 or 已人工修改，跳过自动更新
+      const existing = this.groupSummaries[groupId]
+      if (existing?.isEditing || existing?.lastUpdatedBy === 'user') {
+        console.log(`⛔ Skip auto-summary for group ${groupId}, user-edited`)
+        return
+      }
+
+      const payload = {
+        group_id: groupId,
+        group_title: this.photoGroups[groupId].name,
+        qa_pairs: answeredQs.map(q => ({
+          question: q.text,
+          answer: q.answer
+        }))
+      }
+
+      const res = await axios.post(
+        "http://127.0.0.1:5000/summarize-group-memory",
+        payload
+      )
+      
+      this.groupSummaries[groupId] = {
+        data: res.data.summary,
+        isEditing: false,
+        editBuffer: null,
+        lastUpdatedBy: 'model'
+      }
+    },
+    async updateInterGroupSummary(question) {
+      const { left_group_id, right_group_id } = question
+      if (left_group_id == null || right_group_id == null) return
+
+      const key = `${left_group_id}-${right_group_id}`
+
+      const answeredQs = this.questions.filter(q =>
+        q.type === "inter" &&
+        q.left_group_id === left_group_id &&
+        q.right_group_id === right_group_id &&
+        q.answered &&
+        q.answer.trim()
+      )
+
+      if (answeredQs.length === 0) return
+
+      const existing = this.interGroupSummaries[key]
+      if (existing?.isEditing || existing?.lastUpdatedBy === 'user') return
+
+      const payload = {
+        left_group_title: this.photoGroups[left_group_id].name,
+        right_group_title: this.photoGroups[right_group_id].name,
+        qa_pairs: answeredQs.map(q => ({
+          question: q.text,
+          answer: q.answer
+        }))
+      }
+
+      const res = await axios.post(
+        "http://127.0.0.1:5000/summarize-inter-group",
+        payload
+      )
+
+      this.interGroupSummaries[key] = {
+        data: { text: res.data.text },
+        isEditing: false,
+        editBuffer: null,
+        lastUpdatedBy: 'model'
+      }
+
+    },
+    startEditGroupSummary(groupId) {
+      const summary = this.groupSummaries[groupId]
+      if (!summary || !summary.data) return
+
+      summary.editBuffer = JSON.parse(JSON.stringify(summary.data))
+      summary.isEditing = true
+    },
+
+    confirmEditGroupSummary(groupId) {
+      const summary = this.groupSummaries[groupId]
+      summary.data = JSON.parse(JSON.stringify(summary.editBuffer))
+      summary.editBuffer = null
+      summary.isEditing = false
+      summary.lastUpdatedBy = "user"
+    },
+
+    cancelEditGroupSummary(groupId) {
+      const summary = this.groupSummaries[groupId]
+      summary.editBuffer = null
+      summary.isEditing = false
+    },
+    startEditInterGroupSummary(leftId, rightId) {
+      const key = `${leftId}-${rightId}`
+      const summary = this.interGroupSummaries[key]
+      if (!summary || !summary.data) return
+
+      summary.editBuffer = JSON.parse(JSON.stringify(summary.data))
+      summary.isEditing = true
+    },
+
+    confirmEditInterGroupSummary(leftId, rightId) {
+      const key = `${leftId}-${rightId}`
+      const summary = this.interGroupSummaries[key]
+
+      summary.data = JSON.parse(JSON.stringify(summary.editBuffer))
+      summary.editBuffer = null
+      summary.isEditing = false
+      summary.lastUpdatedBy = 'user'
+    },
+
+    cancelEditInterGroupSummary(leftId, rightId) {
+      const key = `${leftId}-${rightId}`
+      const summary = this.interGroupSummaries[key]
+
+      summary.editBuffer = null
+      summary.isEditing = false
     },
     convertToBase64(file) {
       return new Promise((resolve, reject) => {
@@ -1312,6 +1778,15 @@ export default {
         } else {
           this.stage2QA.push(record);
         }
+        if (question.type === "intra" && question.group_id !== null) {
+          this.updateGroupSummary(question);
+        } else if (
+          question.type === "inter" &&
+          question.left_group_id != null &&
+          question.right_group_id != null
+        ) {
+          this.updateGroupSummary(question);
+        }
       } else if (this.currentStage === 4) {
         const existing = this.stage4QA.find(r => r.index === index);
         if (existing) {
@@ -1325,6 +1800,15 @@ export default {
       const nextIndex = questions.findIndex((q, i) => i > index && !q.answered);
       this.currentQuestionIndex = nextIndex !== -1 ? nextIndex : index;
     },
+    getAnsweredIntraQuestionsByGroup(groupId) {
+      return this.questions.filter(q =>
+        q.type === "intra" &&
+        q.group_id === groupId &&
+        q.answered &&
+        q.answer.trim() !== ""
+      )
+    },
+    
     // 进入编辑模式
     startEditAssistantText() {
       // 编辑内容 = 当前整合文本 + 更新文本（拼接，保留用户 Stage4 修改）
@@ -2217,11 +2701,13 @@ async generateAiVideo() {
 
 /* 中间内容区 - 弹性布局 */
 .content-area {
+  height: calc(100vh - 72px); /* 顶部 Stage 导航高度 */
+  overflow-y: auto;
   flex: 1;
   display: flex;
   flex-direction: column;
   padding: 24px;
-  overflow: hidden;
+  min-height: 0;
 }
 
 /* 面板头部通用样式 */
@@ -2290,12 +2776,13 @@ async generateAiVideo() {
 
 /* 照片面板 - 紧凑设计 */
 .photo-panel {
+  overflow-y: auto;
+  max-height: 240px; 
   background: white;
   border-radius: 8px;
   padding: 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   flex-shrink: 0;
-  /* ✅ [修改] 支持内部滚动 */
   display: flex; 
   flex-direction: column;
   overflow: hidden;
@@ -2440,7 +2927,7 @@ async generateAiVideo() {
 }
 
 /* 叙事文本 */
-.narrative-section {
+/* .narrative-section {
   background: white;
   border-radius: 8px;
   padding: 20px;
@@ -2448,10 +2935,27 @@ async generateAiVideo() {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+} */
+ /* 叙事文本 */
+.narrative-section {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  overflow-y: auto; 
+
+  /* 关键三行 */
+  flex: 1;
+  min-height: 0;
+
+  display: flex;
+  flex-direction: column;
 }
+
 
 .narrative-content {
   flex: 1;
+  min-height: 0;
   line-height: 1.8;
   color: #444;
   font-size: 15px;
@@ -2725,6 +3229,7 @@ async generateAiVideo() {
   padding: 16px; /* ✅ [修改] 统一 padding */
   border-radius: 6px;
   overflow-y: auto; /* ✅ [新增] */
+  min-height: 120px; 
 }
 
 .narrative-input::placeholder {
@@ -2830,4 +3335,154 @@ async generateAiVideo() {
   justify-content: flex-end;
   gap: 8px;
 }
+
+/* 分组结果整体容器 */
+.group-section {
+  max-height: 240px;        /* 👈 核心 */
+  overflow-y: auto;         /* 👈 核心 */
+  flex-shrink: 0;           /* 👈 防止挤压其他区域 */
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  margin-top: 16px;
+}
+
+/* Stage 2：分组结果撑满左侧 */
+.stage-2 .group-section {
+  max-height: none;     /* ✅ 解除上限 */
+  flex: 1;              /* ✅ 吃掉剩余空间 */
+  flex-shrink: 1;
+  overflow-y: auto;
+}
+
+
+/* 单个分组块 */
+.group-block {
+  border: 1px dashed #c3c9e8; /* 同主色调的浅紫色虚线 */
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 16px;
+  background: #fafbfc; /* 浅灰蓝背景 */
+}
+
+.group-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #7c83b9;
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  background: #f0f2f8;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.group-summary {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: #fafafa;
+  border-left: 3px solid #667eea;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #333;
+}
+
+.summary-item {
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.summary-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.summary-edit-item {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 6px;
+}
+
+.summary-edit-item input,
+.summary-edit-item textarea {
+  font-size: 13px;
+  padding: 4px 6px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+.inter-group-block {
+  margin: 12px 0 20px;
+  padding: 10px 14px;
+  background: #f6f7fb;
+  border-left: 3px dashed #7c83b9;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.inter-header {
+  font-weight: 600;
+  color: #5b61a6;
+  margin-bottom: 6px;
+}
+
+.inter-question {
+  margin-top: 6px;
+}
+
+.inter-question-text {
+  color: #333;
+}
+
+.inter-question-answer {
+  margin-top: 2px;
+  padding-left: 8px;
+  color: #666;
+  font-style: italic;
+}
+
+/* 阶段过渡编辑框 */
+.inter-edit-textarea {
+  width: 100%;
+  min-height: 80px;          /* ✅ 核心 */
+  resize: vertical;         /* 允许用户拉高 */
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 8px 10px;
+  border: 1px solid #c3c9e8;
+  border-radius: 6px;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+/* 编辑态操作区 */
+.inter-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* 编辑态按钮统一尺寸 */
+.inter-edit-actions button {
+  min-width: 64px;
+  height: 30px;
+  padding: 0 12px;
+  font-size: 12px;
+  border-radius: 4px;
+
+  background: #fff;
+  border: 1px solid #c3c9e8;   /* ✅ 细主题色边框 */
+  color: #5b61a6;
+
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
 </style>
