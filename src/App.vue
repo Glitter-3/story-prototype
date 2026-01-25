@@ -35,7 +35,7 @@
 
     <div class="main-content">
       <section class="content-area" ref="contentArea">
-        <div v-if="currentStage !== 2" class="photo-panel" :style="{ height: photoPanelHeight + 'px' }">
+        <div v-if="currentStage !== 2" class="photo-panel" :class="{ collapsed: isPhotoPanelCollapsed }">
           <div class="panel-header">
             <h2>📷 照片面板</h2>
             <div class="panel-controls">
@@ -52,277 +52,412 @@
               <button v-if="currentStage === 1" class="control-btn" @click="groupPhotosByTime" :disabled="photos.length === 0 || groupingInProgress">
                 {{ groupingInProgress ? '分组中…' : '照片分组' }}
               </button>
+              <button
+                class="control-btn"
+                @click="isPhotoPanelCollapsed = !isPhotoPanelCollapsed"
+              >
+                {{ isPhotoPanelCollapsed ? '展开' : '收起' }}
+              </button>
 
             </div>
           </div>
-          <div v-if="currentStage !== 3 && currentStage !== 4 && currentStage !== 5" class="photo-grid">
-            <div class="photo-slot" v-for="(photo, index) in photos" :key="index">
-              <div class="photo-placeholder" draggable="currentStage === 1" @dragstart="currentStage === 1 && onPhotoDragStart($event, idx)" @click="triggerFileInput(index)" v-if="currentStage === 1">
-                <template v-if="photo.url">
-                  <img :src="photo.url" class="photo-preview" alt="预览图片" />
-                </template>
-                <template v-else>
-                  <span class="photo-number">{{ index + 1 }}</span>
-                  <span class="add-icon">+</span>
-                </template>
-              </div>
+          <div  class="photo-panel-content"  v-show="!isPhotoPanelCollapsed">
+            <div v-if="currentStage !== 3 && currentStage !== 4 && currentStage !== 5" class="photo-grid">
+              <div class="photo-slot" v-for="(photo, index) in photos" :key="index">
+                <div class="photo-placeholder" draggable="currentStage === 1" @dragstart="currentStage === 1 && onPhotoDragStart($event, idx)" @click="triggerFileInput(index)" v-if="currentStage === 1">
+                  <template v-if="photo.url">
+                    <img :src="photo.url" class="photo-preview" alt="预览图片" />
+                  </template>
+                  <template v-else>
+                    <span class="photo-number">{{ index + 1 }}</span>
+                    <span class="add-icon">+</span>
+                  </template>
+                </div>
 
-              <div class="photo-placeholder" draggable="currentStage === 1" @dragstart="currentStage === 1 && onPhotoDragStart($event, idx)" v-else>
-                <template v-if="photo.url">
-                  <img :src="photo.url" class="photo-preview" alt="预览图片" />
-                </template>
-                <template v-else>
-                  <span class="photo-number">{{ index + 1 }}</span>
-                  <span class="add-icon">+</span>
-                </template>
-              </div>
-            </div>
-          </div>
-
-          <div v-else-if="currentStage === 3 || currentStage === 4" class="split-container">
-            <div class="split-title">🎞️ 原照片集</div>
-
-            <div class="top-panel">
-              <div class="photo-grid">
-                <div class="photo-slot" v-for="(photo, index) in photos" :key="'orig-'+index">
-                  <div class="photo-placeholder">
-                    <template v-if="photo.url">
-                      <img :src="photo.url" class="photo-preview" alt="原始图片" />
-                    </template>
-                    <template v-else>
-                      <span class="photo-number">{{ index + 1 }}</span>
-                      <span class="add-icon">+</span>
-                    </template>
-                  </div>
+                <div class="photo-placeholder" draggable="currentStage === 1" @dragstart="currentStage === 1 && onPhotoDragStart($event, idx)" v-else>
+                  <template v-if="photo.url">
+                    <img :src="photo.url" class="photo-preview" alt="预览图片" />
+                  </template>
+                  <template v-else>
+                    <span class="photo-number">{{ index + 1 }}</span>
+                    <span class="add-icon">+</span>
+                  </template>
                 </div>
               </div>
             </div>
 
-            <div class="bottom-panel">
-              <div class="split-title">🪄 AI 增强照片</div>
-              <div class="photo-grid ai-photo-grid">
-                <div class="photo-slot-ai" v-for="(ap, idx) in aiPhotos" :key="'ai-'+idx">
-                  <div class="photo-placeholder ai-placeholder" 
-                       @click="onClickAiSlot(idx)"
-                       @mouseover="onPhotoHover(idx)"
-                       @mouseleave="onPhotoLeave">
-                    <span class="ai-photo-label">{{ getLetterIndex(idx) }}</span>
-                    <span v-if="ap.iterationLabel" class="ai-photo-iter-label">{{ ap.iterationLabel }}</span>
-                    <template v-if="ap.url">
-                      <img :src="ap.url" class="photo-preview" alt="AI增强图片" />
-                    </template>
-                    <template v-else>
-                      <span class="photo-number">{{ idx + 1 }}</span>
-                      <span class="add-icon">+</span>
-                    </template>
-                  </div>
-                  <button 
-                    v-if="currentStage === 4" 
-                    class="edit-photo-btn" 
-                    @click="openSuggestionModal(idx)"
-                    :disabled="iterationStopped"> ✏️ 建议
-                  </button>
+            <div v-else-if="currentStage === 3 || currentStage === 4" class="split-container">
+              <div class="split-title">🎞️ 原照片集</div>
 
-                  <div class="ai-photo-controls" style="display:flex; gap:4px; width:100%; margin-top:4px;">
+              <div class="top-panel">
+                <div class="photo-grid">
+                  <div class="photo-slot" v-for="(photo, index) in photos" :key="'orig-'+index">
+                    <div class="photo-placeholder">
+                      <template v-if="photo.url">
+                        <img :src="photo.url" class="photo-preview" alt="原始图片" />
+                      </template>
+                      <template v-else>
+                        <span class="photo-number">{{ index + 1 }}</span>
+                        <span class="add-icon">+</span>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bottom-panel">
+                <div class="split-title">🪄 AI 增强照片</div>
+                <div class="photo-grid ai-photo-grid">
+                  <div class="photo-slot-ai" v-for="(ap, idx) in aiPhotos" :key="'ai-'+idx">
+                    <div class="photo-placeholder ai-placeholder" 
+                        @click="onClickAiSlot(idx)"
+                        @mouseover="onPhotoHover(idx)"
+                        @mouseleave="onPhotoLeave">
+                      <span class="ai-photo-label">{{ getLetterIndex(idx) }}</span>
+                      <span v-if="ap.iterationLabel" class="ai-photo-iter-label">{{ ap.iterationLabel }}</span>
+                      <template v-if="ap.url">
+                        <img :src="ap.url" class="photo-preview" alt="AI增强图片" />
+                      </template>
+                      <template v-else>
+                        <span class="photo-number">{{ idx + 1 }}</span>
+                        <span class="add-icon">+</span>
+                      </template>
+                    </div>
                     <button 
+                      v-if="currentStage === 4" 
                       class="edit-photo-btn" 
                       @click="openSuggestionModal(idx)"
-                      :disabled="iterationStopped"> ✏️ 指令
+                      :disabled="iterationStopped"> ✏️ 建议
                     </button>
-                    <button 
-                      class="edit-photo-btn" 
-                      style="color: #ff4d4f; border-color: #ffccc7;"
-                      @click="deleteAiPhoto(idx)"> 🗑️ 删除
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
 
-          <div v-else-if="currentStage === 5" class="split-container">
-            <div class="split-title">🎞️ 原照片集</div>
-
-            <div class="top-panel">
-              <div class="photo-grid">
-                <div class="photo-slot" v-for="(photo, index) in photos" :key="'orig-'+index">
-                  <div class="photo-placeholder">
-                    <template v-if="photo.url">
-                      <img :src="photo.url" class="photo-preview" alt="原始图片" />
-                    </template>
-                    <template v-else>
-                      <span class="photo-number">{{ index + 1 }}</span>
-                      <span class="add-icon">+</span>
-                    </template>
+                    <div class="ai-photo-controls" style="display:flex; gap:4px; width:100%; margin-top:4px;">
+                      <button 
+                        class="edit-photo-btn" 
+                        @click="openSuggestionModal(idx)"
+                        :disabled="iterationStopped"> ✏️ 指令
+                      </button>
+                      <button 
+                        class="edit-photo-btn" 
+                        style="color: #ff4d4f; border-color: #ffccc7;"
+                        @click="deleteAiPhoto(idx)"> 🗑️ 删除
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div class="bottom-panel">
-              <div v-if="currentStage === 5" style="text-align: center; margin-bottom: 10px;">
-                <button 
-                  class="control-btn primary" 
-                  @click="generateAiVideo"
-                  :disabled="isGeneratingVideo">
-                  {{ isGeneratingVideo ? '生成中…' : '🎬 生成最终视频' }}
-                </button>
-                <span v-if="videoGenerationError" style="color: red; font-size: 12px; margin-left: 8px;">
-                  {{ videoGenerationError }}
-                </span>
-              </div>              
-              <div class="split-title">🎬 AI 增强视频</div>
-              <div class="video-slot">
-                <video 
-                  v-if="aiVideo.url" 
-                  :src="aiVideo.url" 
-                  controls 
-                  style="width:100%; border-radius:6px; border:1px solid #ccc;">
-                </video>
-                <div v-else class="video-placeholder" 
-                    style="display:flex; justify-content:center; align-items:center; height:100px; border:1px dashed #ccc; border-radius:6px; color:#666;">
-                  <span>AI 视频占位</span>
-                </div>
+            <div v-else-if="currentStage === 5" class="split-container">
+              <div class="split-title">🎞️ 原照片集</div>
 
+              <div class="top-panel">
+                <div class="photo-grid">
+                  <div class="photo-slot" v-for="(photo, index) in photos" :key="'orig-'+index">
+                    <div class="photo-placeholder">
+                      <template v-if="photo.url">
+                        <img :src="photo.url" class="photo-preview" alt="原始图片" />
+                      </template>
+                      <template v-else>
+                        <span class="photo-number">{{ index + 1 }}</span>
+                        <span class="add-icon">+</span>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bottom-panel">
+                <div v-if="currentStage === 5" style="text-align: center; margin-bottom: 10px;">
+                  <button 
+                    class="control-btn primary" 
+                    @click="generateAiVideo"
+                    :disabled="isGeneratingVideo">
+                    {{ isGeneratingVideo ? '生成中…' : '🎬 生成最终视频' }}
+                  </button>
+                  <span v-if="videoGenerationError" style="color: red; font-size: 12px; margin-left: 8px;">
+                    {{ videoGenerationError }}
+                  </span>
+                </div>              
+                <div class="split-title">🎬 AI 增强视频</div>
+                <div class="video-slot">
+                  <video 
+                    v-if="aiVideo.url" 
+                    :src="aiVideo.url" 
+                    controls 
+                    style="width:100%; border-radius:6px; border:1px solid #ccc;">
+                  </video>
+                  <div v-else class="video-placeholder" 
+                      style="display:flex; justify-content:center; align-items:center; height:100px; border:1px dashed #ccc; border-radius:6px; color:#666;">
+                    <span>AI 视频占位</span>
+                  </div>
+
+                </div>
               </div>
             </div>
           </div>
 
         </div>
-        <!-- Stage 1 分组结果展示 -->
-        <div v-if="(currentStage === 1 || currentStage === 2) && showGroups" class="group-section">
-          <h3 style="margin: 16px 0; font-size:15px; color:#333;">🕒 照片分组结果</h3>
-          <div v-for="(group, gIdx) in photoGroups" :key="gIdx">
-            <div class="group-block" @dragover="onGroupDragOver" @drop="onGroupDrop($event, gIdx)">
-              <div
-                class="group-title"
-                :style="{ cursor: currentStage === 1 ? 'pointer' : 'default' }"
-                @click="currentStage === 1 && editGroupName(gIdx)"
-                title="点击修改标题"
-              >
-                {{ group.name }}
+        <!-- Stage 1 / Stage 2 时间轴展示 -->
+        <div v-if="showGroups" class="timeline-wrapper">
+
+          <!-- ================= Stage 1：横向时间轴（可编辑） ================= -->
+          <div v-if="currentStage === 1" class="timeline horizontal">
+
+            <div
+              v-for="(group, gIdx) in photoGroups"
+              :key="gIdx"
+              class="timeline-node"
+            >
+              <!-- 插入 group（左侧） -->
+              <button
+                v-if="gIdx === 0"
+                class="insert-group-btn"
+                @click="addNewGroupAfter(-1)"
+              >＋</button>
+
+              <!-- group 主体 -->
+              <div class="group-card">
+                <div
+                  class="group-title editable"
+                  @click="editGroupName(gIdx)"
+                >
+                  {{ group.name }}
+                </div>
+
+                <!-- 子分组（全部在下方） -->
+                <div class="subgroup-list">
+                  <div
+                    v-for="(subgroup, sgIdx) in group.subgroups"
+                    :key="sgIdx"
+                    class="subgroup-box"
+                    @dragover.prevent
+                    @drop="onSubgroupDrop($event, gIdx, sgIdx)"
+                  >
+                    <div
+                      class="subgroup-title editable"
+                      @click="editSubgroupName(gIdx, sgIdx)"
+                    >
+                      {{ subgroup.name }}
+                    </div>
+
+                    <div class="photo-grid">
+                      <div
+                        class="photo-slot"
+                        v-for="idx in subgroup.photo_indices"
+                        :key="idx"
+                      >
+                        <div
+                          class="photo-placeholder"
+                          draggable="true"
+                          @dragstart="onPhotoDragStart($event, idx)"
+                        >
+                          <img
+                            v-if="photos[idx]?.url"
+                            :src="photos[idx].url"
+                            class="photo-preview"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 删除 subgroup -->
+                    <button
+                      v-if="group.subgroups.length >= 2"
+                      class="control-btn"
+                      style="padding: 4px 8px; font-size: 12px; background: #ffebee; color: #e53935; border-color: #ffcdd2;"
+                      @click="deleteSubgroup(gIdx, sgIdx)"
+                    >
+                      删除子分组
+                    </button>
+                  </div>
+                </div>
+
+                <!-- group 操作 -->
+                <div class="group-actions">
+                  <button class="control-btn" style="padding: 4px 8px; font-size: 12px;" @click="addSubgroup(gIdx)">＋ 子分组</button>
+                  <button class="control-btn" style="padding: 4px 8px; font-size: 12px; background: #ffebee; color: #e53935; border-color: #ffcdd2;" @click="deleteGroup(gIdx)">删除阶段</button>
+                </div>
               </div>
-              <!-- Stage 2：五维记忆总结 -->
+
+              <!-- 插入 group（右侧） -->
+              <button
+                class="insert-group-btn"
+                @click="addNewGroupAfter(gIdx)"
+              >＋</button>
+            </div>
+          </div>
+
+          <!-- ================= Stage 2：纵向时间轴（只读） ================= -->
+          <div v-if="currentStage === 2" class="timeline vertical">
+
+            <div
+              v-for="(group, gIdx) in photoGroupsWithSummaries"
+              :key="gIdx"
+              class="timeline-node-vertical"
+            >
+              <!-- 时间节点 -->
+              <div class="group-node-vertical">
+                <div class="group-title">
+                  {{ group.name }}
+                </div>
+              </div>
+
+              <!-- 子分组 -->
+              <div class="subgroup-list-vertical">
+                <div
+                  v-for="(subgroup, sgIdx) in group.subgroups"
+                  :key="sgIdx"
+                  class="subgroup-box"
+                >
+                  <div class="subgroup-title">
+                    {{ subgroup.name }}
+                  </div>
+                  
+                  <div class="summary-header">
+                    <strong>🧠 记忆总结</strong>
+
+                    <div class="summary-actions">
+                      <button
+                        v-if="!subgroupSummaries[gIdx]?.[sgIdx]?.isEditing"
+                        class="control-btn"
+                        @click="startEditSubgroupSummary(gIdx, sgIdx)"
+                      >
+                        修改
+                      </button>
+
+                      <template v-else>
+                        <div class="inter-edit-actions">
+                          <button @click="confirmEditSubgroupSummary(gIdx, sgIdx)"> 确认 </button>
+                          <button @click="cancelEditSubgroupSummary(gIdx, sgIdx)"> 取消 </button>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+
+                  <!-- 4W + 情感 -->
+                  <div class="subgroup-summary">
+                    <!-- ================= 展示态 ================= -->
+                    <div
+                      v-if="!subgroupSummaries[gIdx]?.[sgIdx]?.isEditing"
+                    >
+                      <div><strong>人物：</strong>{{ subgroupSummaries[gIdx]?.[sgIdx]?.data?.who || '—' }}</div>
+                      <div><strong>时间：</strong>{{ subgroupSummaries[gIdx]?.[sgIdx]?.data?.when || '—' }}</div>
+                      <div><strong>地点：</strong>{{ subgroupSummaries[gIdx]?.[sgIdx]?.data?.where || '—' }}</div>
+                      <div><strong>事件：</strong>{{ subgroupSummaries[gIdx]?.[sgIdx]?.data?.what || '—' }}</div>
+                      <div><strong>情感：</strong>{{ subgroupSummaries[gIdx]?.[sgIdx]?.data?.emotion || '—' }}</div>
+                    </div>
+
+                    <!-- ================= 编辑态 ================= -->
+                    <div
+                      v-else
+                      class="summary-edit"
+                    >
+                      <div class="summary-edit-item">
+                        <label>👤 人物</label>
+                        <input v-model="subgroupSummaries[gIdx][sgIdx].editBuffer.who" />
+                      </div>
+
+                      <div class="summary-edit-item">
+                        <label>⏰ 时间</label>
+                        <input v-model="subgroupSummaries[gIdx][sgIdx].editBuffer.when" />
+                      </div>
+
+                      <div class="summary-edit-item">
+                        <label>📍 地点</label>
+                        <input v-model="subgroupSummaries[gIdx][sgIdx].editBuffer.where" />
+                      </div>
+
+                      <div class="summary-edit-item">
+                        <label>📖 事件</label>
+                        <textarea
+                          v-model="subgroupSummaries[gIdx][sgIdx].editBuffer.what"
+                          rows="2"
+                        />
+                      </div>
+
+                      <div class="summary-edit-item">
+                        <label>💗 情感</label>
+                        <input v-model="subgroupSummaries[gIdx][sgIdx].editBuffer.emotion" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 照片 -->
+                  <div class="photo-grid">
+                    <div
+                      class="photo-slot"
+                      v-for="idx in subgroup.photo_indices"
+                      :key="idx"
+                    >
+                      <img
+                        v-if="photos[idx]?.url"
+                        :src="photos[idx].url"
+                        class="photo-preview"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 阶段过渡 -->
               <div
-                v-if="currentStage === 2 && groupSummaries[gIdx]"
-                class="group-summary"
+                v-if="interGroupSummaries[`${gIdx}-${gIdx + 1}`]"
+                class="inter-group-block"
               >
+                <!-- Header -->
                 <div class="summary-header">
-                  <strong>🧠 记忆总结</strong>
+                  <strong>阶段过渡</strong>
 
                   <div class="summary-actions">
+                    <!-- 展示态：修改 -->
                     <button
-                      v-if="!groupSummaries[gIdx].isEditing"
+                      v-if="!interGroupSummaries[`${gIdx}-${gIdx + 1}`].isEditing"
                       class="control-btn"
-                      @click="startEditGroupSummary(gIdx)"
+                      @click="startEditInterGroupSummary(gIdx, gIdx + 1)"
                     >
                       修改
                     </button>
 
+                    <!-- 编辑态：确认 / 取消 -->
                     <template v-else>
                       <div class="inter-edit-actions">
-                        <button @click="confirmEditGroupSummary(gIdx)"> 确认 </button>
-                        <button @click="cancelEditGroupSummary(gIdx)"> 取消 </button>
+                        <button
+                          @click="confirmEditInterGroupSummary(gIdx, gIdx + 1)"
+                        >
+                          确认
+                        </button>
+                        <button
+                          @click="cancelEditInterGroupSummary(gIdx, gIdx + 1)"
+                        >
+                          取消
+                        </button>
                       </div>
                     </template>
                   </div>
                 </div>
-                <div v-if="!groupSummaries[gIdx].isEditing">
-                  <div class="summary-item"><strong> 人物：</strong>{{ groupSummaries[gIdx].data.who || '—' }}</div>
-                  <div class="summary-item"><strong> 时间：</strong>{{ groupSummaries[gIdx].data.when || '—' }}</div>
-                  <div class="summary-item"><strong> 地点：</strong>{{ groupSummaries[gIdx].data.where || '—' }}</div>
-                  <div class="summary-item"><strong> 事件：</strong>{{ groupSummaries[gIdx].data.what || '—' }}</div>
-                  <div class="summary-item"><strong> 情感：</strong>{{ groupSummaries[gIdx].data.emotion || '—' }}</div>
+
+                <!-- 📄 展示态 -->
+                <div
+                  v-if="!interGroupSummaries[`${gIdx}-${gIdx + 1}`].isEditing"
+                  class="inter-summary-text"
+                >
+                  {{ interGroupSummaries[`${gIdx}-${gIdx + 1}`].data.text || '—' }}
                 </div>
-            
-                <div v-else class="summary-edit">
-                  <div class="summary-edit-item">
-                    <label>👤 人物</label>
-                    <input v-model="groupSummaries[gIdx].editBuffer.who" />
-                  </div>
 
-                  <div class="summary-edit-item">
-                    <label>⏰ 时间</label>
-                    <input v-model="groupSummaries[gIdx].editBuffer.when" />
-                  </div>
-
-                  <div class="summary-edit-item">
-                    <label>📍 地点</label>
-                    <input v-model="groupSummaries[gIdx].editBuffer.where" />
-                  </div>
-
-                  <div class="summary-edit-item">
-                    <label>📖 事件</label>
-                    <textarea v-model="groupSummaries[gIdx].editBuffer.what" rows="2" />
-                  </div>
-
-                  <div class="summary-edit-item">
-                    <label>💗 情感</label>
-                    <input v-model="groupSummaries[gIdx].editBuffer.emotion" />
-                  </div>
+                <!-- ✏️ 编辑态 -->
+                <div v-else>
+                  <textarea
+                    v-model="interGroupSummaries[`${gIdx}-${gIdx + 1}`].editBuffer.text"
+                    class="inter-edit-textarea"
+                  />
                 </div>
               </div>
 
-
-              <div class="photo-grid">
-                <div class="photo-slot" v-for="idx in group.photo_indices" :key="idx">
-                  <div class="photo-placeholder" draggable="true" @dragstart="onPhotoDragStart($event, idx)">
-                    <img v-if="photos[idx]?.url" :src="photos[idx].url" class="photo-preview" />
-                    <span v-else class="photo-number">{{ idx + 1 }}</span>
-                  </div>
-                </div>
-              </div>
-              <button v-if="currentStage === 1" class="control-btn" @click="addNewGroupAfter(gIdx)"> ➕ 在此分组后新建</button>
-              <button v-if="currentStage === 1" class="control-btn danger" @click="deleteGroup(gIdx)">  🗑 删除分组</button>
             </div>
-            <!-- ✅ 组间过渡：插在两个 group-block 之间 -->
-            <div
-              v-if="
-                currentStage === 2 &&
-                interGroupSummaries[`${gIdx}-${gIdx + 1}`]
-              "
-              class="inter-group-block"
-            >
-              <div class="inter-header">
-                <strong>⏳ 阶段过渡</strong>
-
-                <div class="summary-actions">
-                  <button
-                    v-if="!interGroupSummaries[`${gIdx}-${gIdx + 1}`].isEditing"
-                    class="control-btn"
-                    @click="startEditInterGroupSummary(gIdx, gIdx + 1)"
-                  >
-                    修改
-                  </button>
-
-                  <template v-else>
-                    <div class="inter-edit-actions">  
-                      <button @click="confirmEditInterGroupSummary(gIdx, gIdx + 1)"> 确认 </button>
-                      <button @click="cancelEditInterGroupSummary(gIdx, gIdx + 1)"> 取消 </button>
-                    </div>
-                  </template>
-                </div>
-              </div>
-
-              <!-- 📄 展示态 -->
-              <div
-                v-if="!interGroupSummaries[`${gIdx}-${gIdx + 1}`].isEditing"
-                class="inter-summary-text"
-              >
-                {{ interGroupSummaries[`${gIdx}-${gIdx + 1}`].data.text || '—' }}
-              </div>
-
-              <!-- ✏️ 编辑态 -->
-              <div v-else>
-                <textarea
-                  v-model="interGroupSummaries[`${gIdx}-${gIdx + 1}`].editBuffer.text"
-                  class="inter-edit-textarea"
-                />
-              </div>
-            </div>
-
           </div>
+
         </div>
+
 
         <div 
           v-if="currentStage !== 2"
@@ -332,7 +467,7 @@
        <div class= "handle-line"></div>
         </div>
 
-        <div v-if="currentStage != 2" class="narrative-section" :style="{ flex: 1 }">
+        <div v-if="currentStage != 2" class="narrative-section" :class="{ collapsed: isNarrativeCollapsed }">
           <div class="panel-header">
             <h3>📝 用户口述</h3>
             <div class="panel-controls">
@@ -340,19 +475,26 @@
               <button class="control-btn" @click="reselectText">🔄 重新口述</button>
 
               <button v-if="currentStage === 3" class="control-btn" @click="generateImages">图像补全</button>
-              </div>
+              <button
+                class="control-btn"
+                @click="isNarrativeCollapsed = !isNarrativeCollapsed"
+              >
+                {{ isNarrativeCollapsed ? '展开' : '收起' }}
+              </button>
+            </div>
           </div>
-          
-        <div
-            ref="editableNarrative"
-            class="narrative-input"
-            contenteditable="true"
-            @input="onEditableInput"
-            @keydown="onEditableKeydown"
-            :placeholder="'请在此输入您对这阶段照片的描述、回忆或故事……'"
-            style="white-space: pre-wrap; overflow-y: auto; min-height: 160px; border: 1px solid #ccc; padding: 10px; border-radius: 6px; color: black;"
-          ></div>
-
+          <div class="narrative-content-wrapper" v-show="!isNarrativeCollapsed">  
+            <div
+                ref="editableNarrative"
+                class="narrative-input"
+                contenteditable="true"
+                @input="onEditableInput"
+                @keydown="onEditableKeydown"
+                :placeholder="'请在此输入您对这阶段照片的描述、回忆或故事……'"
+                style="white-space: pre-wrap; overflow-y: auto; min-height: 160px; border: 1px solid #ccc; padding: 10px; border-radius: 6px; color: black;"
+              >
+            </div>
+          </div>
         </div>
       </section>
 
@@ -672,7 +814,7 @@ export default {
       userNarratives: { 1: '', 2: '', 3: '', 4: '', 5: '' },
       currentQuestionIndex: 0,
       questions: [],
-      groupSummaries: {},
+      subgroupSummaries: {},
       interGroupSummaries: {}, 
       sentencePairs: [],
       stage4Questions: [],
@@ -688,9 +830,11 @@ export default {
       suggestionForPhotoIndex: null,
       currentSuggestionText: '',
       isUpdatingPhoto: false,
-      photoGroups: [], // 保存分组结果 [{ name: '...', photoIndices: [...] }]
+      photoGroups: [], // 保存分组结果
       showGroups: false,  
       groupingInProgress: false,
+      isPhotoPanelCollapsed: false,
+      isNarrativeCollapsed: false,
       // 视频生成状态
       isGeneratingVideo: false,
       videoGenerationError: null,
@@ -709,6 +853,15 @@ export default {
     }
   },
   computed: {
+    photoGroupsWithSummaries() {
+      return this.photoGroups.map((group, gIdx) => ({
+        ...group,
+        subgroups: group.subgroups.map((subgroup, sgIdx) => ({
+          ...subgroup,
+          summary: this.subgroupSummaries[gIdx]?.[sgIdx]?.data || {}
+        }))
+      }));
+    },
     interQuestionsMap() {
       const map = {};
       this.questions.forEach(q => {
@@ -871,34 +1024,41 @@ export default {
         this.currentQuestionIndex = 0;
 
         /* ===============================
-        * 1️⃣ 组内（groupSummaries）初始化
+        * 1️⃣ 组内子分组（subgroupSummaries）初始化
         * =============================== */
-        if (!this.groupSummaries || typeof this.groupSummaries !== 'object') {
-          this.groupSummaries = {};
+        if (!this.subgroupSummaries || typeof this.subgroupSummaries !== 'object') {
+          this.subgroupSummaries = {}
         }
 
-        this.photoGroups.forEach((g, gIdx) => {
-          if (!this.groupSummaries[gIdx]) {
-            this.groupSummaries[gIdx] = {
-              data: {
-                who: "",
-                when: "",
-                where: "",
-                what: "",
-                emotion: ""
-              },
-              editBuffer: {
-                who: "",
-                when: "",
-                where: "",
-                what: "",
-                emotion: ""
-              },
-              isEditing: false,
-              lastUpdatedBy: 'init'
-            };
+        // 清理
+        Object.keys(this.subgroupSummaries).forEach(gIdx => {
+          if (!this.photoGroups[gIdx]) {
+            delete this.subgroupSummaries[gIdx]
           }
-        });
+        })
+
+        this.photoGroups.forEach((group, gIdx) => {
+          if (!this.subgroupSummaries[gIdx]) {
+            this.subgroupSummaries[gIdx] = {}
+          }
+
+          group.subgroups.forEach((sg, sgIdx) => {
+            if (!this.subgroupSummaries[gIdx][sgIdx]) {
+              this.subgroupSummaries[gIdx][sgIdx] = {
+                data: {
+                  who: "",
+                  when: group.name,   // ⭐ 默认继承 group 标题
+                  where: "",
+                  what: "",
+                  emotion: ""
+                },
+                editBuffer: null,
+                isEditing: false,
+                lastUpdatedBy: "init"
+              }
+            }
+          })
+        })
 
         /* ===============================
         * 2️⃣ 组间（interGroupSummaries）初始化
@@ -1102,7 +1262,18 @@ export default {
           narrative: narrative
         });
         if (resp.data.groups) {
-          this.photoGroups = resp.data.groups;
+          this.photoGroups = resp.data.groups.map(g => ({
+            name: g.name,
+            subgroups: (g.subgroups && g.subgroups.length > 0)
+              ? g.subgroups.map(sg => ({
+                  name: sg.name || '默认子分组',
+                  photo_indices: sg.photo_indices ? [...sg.photo_indices] : []
+                }))
+              : [{
+                  name: '默认子分组',
+                  photo_indices: []
+                }]
+          }));
           this.showGroups = true;
         } else {
           alert('分组失败，请重试');
@@ -1120,36 +1291,82 @@ export default {
 
       this.photoGroups.splice(gIdx + 1, 0, {
         name: name.trim(),
-        photo_indices: []
+        subgroups: [{
+          name: '默认子分组',
+          photo_indices: []
+        }]
       });
     },
     deleteGroup(groupIndex) {
       const groups = this.photoGroups;
-
-      if (groups.length === 1) {
-        alert("至少需要保留一个分组");
+      if (groups.length <= 1) {
+        alert('至少需要保留一个阶段');
         return;
       }
 
       const deletedGroup = groups[groupIndex];
+      const deletedPhotos = deletedGroup.subgroups.flatMap(sg => sg.photo_indices);
 
-      const targetIndex = groupIndex > 0
-        ? groupIndex - 1
-        : groupIndex + 1;
+      if (deletedPhotos.length === 0) {
+        // 无照片，直接删除
+        groups.splice(groupIndex, 1);
+        return;
+      }
 
-      const targetGroup = groups[targetIndex];
+      let targetGroup = null;
+      let targetSubgroupIndex = -1;
 
-      // 合并照片
-      targetGroup.photo_indices = [
-        ...targetGroup.photo_indices,
-        ...deletedGroup.photo_indices
-      ];
+      if (groupIndex === 0) {
+        // 删除第一个 group → 移至下一个 group 的第一个 subgroup
+        targetGroup = groups[1];
+        targetSubgroupIndex = 0;
+      } else {
+        // 删除非第一个 group → 移至上一个 group 的最后一个 subgroup
+        targetGroup = groups[groupIndex - 1];
+        targetSubgroupIndex = targetGroup.subgroups.length - 1;
+      }
 
-      // 排序（可选）
-      targetGroup.photo_indices.sort((a, b) => a - b);
+      // 将照片合并到目标 subgroup
+      if (targetGroup && targetSubgroupIndex >= 0) {
+        targetGroup.subgroups[targetSubgroupIndex].photo_indices.push(...deletedPhotos);
+        targetGroup.subgroups[targetSubgroupIndex].photo_indices.sort((a, b) => a - b);
+      }
 
-      // 删除分组
+      // 执行删除
       groups.splice(groupIndex, 1);
+    },
+    // 新增子分组：在指定 group 末尾添加一个空子分组
+    addSubgroup(gIdx) {
+      if (!this.photoGroups[gIdx]) return;
+      const newSubgroup = {
+        name: '默认子分组',
+        photo_indices: []
+      };
+      this.photoGroups[gIdx].subgroups.push(newSubgroup);
+    },
+
+    // 删除子分组：将被删 subgroup 的照片移至同 group 内上一个 subgroup（若存在），否则丢弃（按需求至少保留两个）
+    deleteSubgroup(gIdx, sgIdx) {
+      const group = this.photoGroups[gIdx];
+      if (!group || group.subgroups.length <= 1) {
+        alert('每个阶段至少需要保留一个子分组');
+        return;
+      }
+
+      const deletedSubgroup = group.subgroups[sgIdx];
+      const photosToMove = [...deletedSubgroup.photo_indices];
+
+      // 找上一个 subgroup（sgIdx - 1）
+      const targetSgIdx = sgIdx > 0 ? sgIdx - 1 : sgIdx + 1; // 通常不会走到 else，因至少有两个
+      const targetSubgroup = group.subgroups[targetSgIdx];
+
+      if (targetSubgroup && photosToMove.length > 0) {
+        targetSubgroup.photo_indices.push(...photosToMove);
+        targetSubgroup.photo_indices.sort((a, b) => a - b);
+      }
+
+      // 执行删除
+      group.subgroups.splice(sgIdx, 1);
     },
     editGroupName(index) {
       const oldName = this.photoGroups[index].name;
@@ -1157,36 +1374,46 @@ export default {
       if (newName === null || newName.trim() === '') return;
       this.photoGroups[index].name = newName.trim()
     },
+    editSubgroupName(gIdx, sgIdx) {
+      const group = this.photoGroups[gIdx];
+      if (!group || !group.subgroups[sgIdx]) return;
+
+      const oldName = group.subgroups[sgIdx].name;
+      const newName = prompt('修改子分组名称：', oldName);
+      
+      if (newName === null || newName.trim() === '') return; // 用户取消或输入空值
+      
+      this.photoGroups[gIdx].subgroups[sgIdx].name = newName.trim();
+    },
     onPhotoDragStart(event, photoIndex) {
       event.dataTransfer.setData('text/plain', String(photoIndex));
       event.dataTransfer.effectAllowed = 'move';
     },
-    onGroupDrop(event, targetGroupIndex) {
+    onSubgroupDrop(event, gIdx, sgIdx){
       event.preventDefault();
-      const photoIndexStr = event.dataTransfer.getData('text/plain');
-      const photoIndex = parseInt(photoIndexStr, 10);
+
+      const photoIndex = parseInt(
+        event.dataTransfer.getData('text/plain'),
+        10
+      );
       if (isNaN(photoIndex)) return;
 
-      const targetGroup = this.photoGroups[targetGroupIndex];
-
-      // 如果已在该组，不重复添加
-      if (targetGroup.photo_indices.includes(photoIndex)) return;
-
-      // 从原分组移除（如果存在）
+      // 1. 从所有 subgroup 中移除
       for (const group of this.photoGroups) {
-        const i = group.photo_indices.indexOf(photoIndex);
-        if (i !== -1) {
-          group.photo_indices.splice(i, 1);
-          break;
+        for (const sg of group.subgroups) {
+          const i = sg.photo_indices.indexOf(photoIndex);
+          if (i !== -1) {
+            sg.photo_indices.splice(i, 1);
+          }
         }
       }
 
-      // 添加到目标分组
-      targetGroup.photo_indices.push(photoIndex);
-    },
-    onGroupDragOver(event) {
-      event.preventDefault(); // 必须！否则 drop 不会触发
-      event.dataTransfer.dropEffect = 'move';
+      // 2. 添加到目标 subgroup
+      const targetSubgroup = this.photoGroups[gIdx].subgroups[sgIdx];
+      if (!targetSubgroup.photo_indices.includes(photoIndex)) {
+        targetSubgroup.photo_indices.push(photoIndex);
+        targetSubgroup.photo_indices.sort((a, b) => a - b);
+      }
     },
 
     async fetchQuestions() {
@@ -1197,20 +1424,22 @@ export default {
       }
       try {
         const groupsPayload = await Promise.all(
-          this.photoGroups.map(async (group, groupIdx) => {
-            const groupPhotos = await Promise.all(
-              group.photo_indices.map(idx =>
-                this.convertToBase64(this.photos[idx].file)
-              )
-            );
-
-            return {
-              group_id: groupIdx,
-              name: group.name,
-              photo_indices: group.photo_indices,
-              photos: groupPhotos
-            };
-          })
+          this.photoGroups.map(async (group, gIdx) => ({
+            group_id: gIdx,
+            name: group.name,
+            subgroups: await Promise.all(
+              group.subgroups.map(async (sg, sgIdx) => ({
+                subgroup_id: sgIdx,
+                name: sg.name,
+                photo_indices: sg.photo_indices,
+                photos: await Promise.all(
+                  sg.photo_indices.map(idx =>
+                    this.convertToBase64(this.photos[idx].file)
+                  )
+                )
+              }))
+            )
+          }))
         );
 
         console.log("📤 Sending to backend:", {
@@ -1237,44 +1466,48 @@ export default {
     },
 
     async updateGroupSummary(question) {
-      if (question.type === "intra") {
-        await this.updateIntraGroupSummary(question)
-      } else if (question.type === "inter") {
-        await this.updateInterGroupSummary(question)
+      try{
+        if (question.type === "intra") {
+          await this.updateIntraSubgroupSummary(question)
+        } else if (question.type === "inter") {
+          await this.updateInterGroupSummary(question)
+        }
+      } catch (e) {
+        console.error('[updateGroupSummary error]', e)
       }
     },
-    async updateIntraGroupSummary(question) {
-      const groupId = question.group_id
-      if (!this.photoGroups[groupId]) return
+    async updateIntraSubgroupSummary(question) {
 
-      const answeredQs = this.getAnsweredIntraQuestionsByGroup(groupId)
-      if (answeredQs.length === 0) return
+      const { group_id, subgroup_id } = question
 
-      // 用户正在编辑 or 已人工修改，跳过自动更新
-      const existing = this.groupSummaries[groupId]
-      if (existing?.isEditing || existing?.lastUpdatedBy === 'user') {
-        console.log(`⛔ Skip auto-summary for group ${groupId}, user-edited`)
+      const summary = this.subgroupSummaries[group_id]?.[subgroup_id]
+      if (!summary || summary.isEditing ) return
+
+      const answeredQs = this.getAnsweredIntraQuestions(group_id, subgroup_id)
+      if (!answeredQs.length) {
+        console.warn('[DEBUG] No answered questions, skip summarize')
         return
       }
 
       const payload = {
-        group_id: groupId,
-        group_title: this.photoGroups[groupId].name,
+        group_id: group_id,
+        group_title: this.photoGroups[group_id].name,
+        subgroup_title: this.photoGroups[group_id].subgroups[subgroup_id].name,
         qa_pairs: answeredQs.map(q => ({
           question: q.text,
           answer: q.answer
         }))
       }
 
-      const res = await axios.post(
-        "http://127.0.0.1:5000/summarize-group-memory",
-        payload
-      )
-      
-      this.groupSummaries[groupId] = {
-        data: res.data.summary,
-        isEditing: false,
-        editBuffer: null,
+      const res = await axios.post('http://127.0.0.1:5000/summarize-subgroup-memory', payload)
+
+      const current = this.subgroupSummaries[group_id][subgroup_id];
+      this.subgroupSummaries[group_id][subgroup_id] = {
+        ...current,
+        data:{
+          ...res.data.summary,
+          when: current.data.when // ⭐ 保留用户可编辑的时间
+        },
         lastUpdatedBy: 'model'
       }
     },
@@ -1319,27 +1552,30 @@ export default {
       }
 
     },
-    startEditGroupSummary(groupId) {
-      const summary = this.groupSummaries[groupId]
+    startEditSubgroupSummary(gIdx, sgIdx) {
+      const summary = this.subgroupSummaries[gIdx]?.[sgIdx]
       if (!summary || !summary.data) return
 
       summary.editBuffer = JSON.parse(JSON.stringify(summary.data))
       summary.isEditing = true
     },
+    confirmEditSubgroupSummary(gIdx, sIdx) {
+      const summary = this.subgroupSummaries[gIdx]?.[sIdx]
+      if (!summary || !summary.editBuffer) return
 
-    confirmEditGroupSummary(groupId) {
-      const summary = this.groupSummaries[groupId]
       summary.data = JSON.parse(JSON.stringify(summary.editBuffer))
       summary.editBuffer = null
       summary.isEditing = false
-      summary.lastUpdatedBy = "user"
+      summary.lastUpdatedBy = 'user'
     },
+    cancelEditSubgroupSummary(gIdx, sIdx) {
+      const summary = this.subgroupSummaries[gIdx]?.[sIdx]
+      if (!summary) return
 
-    cancelEditGroupSummary(groupId) {
-      const summary = this.groupSummaries[groupId]
       summary.editBuffer = null
       summary.isEditing = false
     },
+
     startEditInterGroupSummary(leftId, rightId) {
       const key = `${leftId}-${rightId}`
       const summary = this.interGroupSummaries[key]
@@ -1488,31 +1724,83 @@ export default {
       console.log(`Stage ${stage} 的口述内容已保存：`, content);
       alert(`第 ${stage} 阶段的口述内容已保存`);
     },
+    // async integrateText() {
+    //   if (this.currentStage !== 3) {
+    //     alert("整合文本仅在 Stage 3 可用");
+    //     return;
+    //   }
+    //   const narrative = this.userNarratives[2] || '';
+    //   const qa_pairs = (this.questions || [])
+    //     .filter(q => q.answered && q.answer && q.answer.trim())
+    //     .map(q => ({ question: q.text, answer: q.answer.trim() }));
+    //   if (!narrative && qa_pairs.length === 0) {
+    //     alert("没有可供整合的口述或问答，请先在 Stage2 完成口述与回答。");
+    //     return;
+    //   }
+
+    //   console.log("准备发往 /integrate-text 的 payload:", { narrative, qa_pairs });
+
+    //   try {
+    //     this.integrating = true;
+    //     this.assistantIntegratedText = '';
+    //     this.assistantUpdatedText = '';
+    //     const resp = await axios.post('http://127.0.0.1:5000/integrate-text', {
+    //       narrative,
+    //       qa_pairs,
+    //       options: { output_format: 'text' }
+    //     }, { timeout: 120000 });
+
+    //     if (resp.data && resp.data.integrated_text) {
+    //       this.assistantIntegratedText = String(resp.data.integrated_text).trim();
+    //       this.$message?.success?.("整合完成，已在 AI 面板显示（只读）");
+    //     } else {
+    //       console.error("integrate-text 返回结构异常：", resp.data);
+    //       alert("整合失败，请查看后端日志");
+    //     }
+    //   } catch (err) {
+    //     console.error("整合文本错误：", err);
+    //     alert("整合文本时出错，请查看控制台或后端日志");
+    //   } finally {
+    //     this.integrating = false;
+    //   }
+    // },
     async integrateText() {
       if (this.currentStage !== 3) {
         alert("整合文本仅在 Stage 3 可用");
         return;
       }
-      const narrative = this.userNarratives[2] || '';
-      const qa_pairs = (this.questions || [])
-        .filter(q => q.answered && q.answer && q.answer.trim())
-        .map(q => ({ question: q.text, answer: q.answer.trim() }));
-      if (!narrative && qa_pairs.length === 0) {
-        alert("没有可供整合的口述或问答，请先在 Stage2 完成口述与回答。");
+
+      // 1. 组织 Stage 2 的结构化记忆
+      const group_memories = this.groupSummaries || {};
+      const subgroup_memories = this.subgroupSummaries || {};
+      const inter_group_memories = this.interGroupSummaries || {};
+
+      // 2. 基本校验（替代 narrative / qa 的校验）
+      const hasAnyGroup = Object.keys(subgroup_memories).length > 0;
+      if (!hasAnyGroup) {
+        alert("没有可供整合的阶段记忆，请先在 Stage 2 完成总结。");
         return;
       }
 
-      console.log("准备发往 /integrate-text 的 payload:", { narrative, qa_pairs });
+      const payload = {
+        group_memories,
+        subgroup_memories,
+        inter_group_memories,
+        options: { output_format: 'text' }
+      };
+
+      console.log("准备发往 /integrate-text 的 payload:", payload);
 
       try {
         this.integrating = true;
         this.assistantIntegratedText = '';
         this.assistantUpdatedText = '';
-        const resp = await axios.post('http://127.0.0.1:5000/integrate-text', {
-          narrative,
-          qa_pairs,
-          options: { output_format: 'text' }
-        }, { timeout: 120000 });
+
+        const resp = await axios.post(
+          'http://127.0.0.1:5000/integrate-text',
+          payload,
+          { timeout: 120000 }
+        );
 
         if (resp.data && resp.data.integrated_text) {
           this.assistantIntegratedText = String(resp.data.integrated_text).trim();
@@ -1553,6 +1841,7 @@ export default {
         const response = await axios.post('http://127.0.0.1:5000/generate-prompts', {
           photos: base64Photos,
           narrative: narrative,
+          subgroup_summaries: this.subgroupSummaries
         });
         
         let pairs = response.data.sentence_pairs || [];
@@ -1608,9 +1897,14 @@ export default {
       try {
         // 4️⃣ 构建 payload：取前4张原图作参考
         const payloadToSend = toGenerate.map(item => ({
-          ...item,
+          index: item.index,
+          sentence: item.sentence,
+          prompt: item.prompt,
+          group_index: item.group_index ?? null,
+          subgroup_index: item.subgroup_index ?? null,
           photo: this.pendingBase64Photos.slice(0, 4)
         }));
+
 
         console.log(`[Stage 3] 准备发送 ${payloadToSend.length} 个生成任务...`);
         const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
@@ -1663,6 +1957,8 @@ export default {
             prompt: res.prompt || pair?.prompt || null,
             origin_pair_index: idx,
             sentence: pair?.sentence || null,
+            group_index: pair?.group_index ?? null,
+            subgroup_index: pair?.subgroup_index ?? null,
             iterationLabel: `S3_Init`
           };
           this.aiPhotos.push(aiObj);
@@ -1679,7 +1975,9 @@ export default {
               sourceIndex: pair.index,
               url: aiPhoto.url,
               prompt: aiPhoto.prompt,
-              sentence: pair.sentence
+              sentence: pair.sentence,
+              group_index: pair.group_index ?? null,
+              subgroup_index: pair.subgroup_index ?? null
             });
           } else {
             // fallback：找原图
@@ -1700,7 +1998,9 @@ export default {
                 type: 'original',
                 sourceIndex: pair.index,
                 url: fallbackUrl,
-                sentence: pair.sentence
+                sentence: pair.sentence,
+                group_index: pair.group_index ?? null,
+                subgroup_index: pair.subgroup_index ?? null
               });
             }
           }
@@ -1767,6 +2067,7 @@ export default {
       if (!questions || !questions[index]) return;
       const question = questions[index];
       if (!question.answer?.trim()) return;
+      console.log('[Submit] Answering question:', question); // 👈 看这里有没有 group_id
 
       // ✅ 补 now
       const now = new Date().toISOString();
@@ -1792,7 +2093,7 @@ export default {
         } else {
           this.stage2QA.push(record);
         }
-        if (question.type === "intra" && question.group_id !== null) {
+        if (question.type === "intra" && question.group_id !== null && question.subgroup_id != null) {
           this.updateGroupSummary(question);
         } else if (
           question.type === "inter" &&
@@ -1814,15 +2115,33 @@ export default {
       const nextIndex = questions.findIndex((q, i) => i > index && !q.answered);
       this.currentQuestionIndex = nextIndex !== -1 ? nextIndex : index;
     },
-    getAnsweredIntraQuestionsByGroup(groupId) {
-      return this.questions.filter(q =>
-        q.type === "intra" &&
+    getAnsweredIntraQuestions(groupId, subgroupId) {
+      if (!this.questions || !Array.isArray(this.questions)) {
+        console.warn('[DEBUG] questions not ready');
+        return [];
+      }
+
+      const result = this.questions.filter(q =>
+        q.type === 'intra' &&
         q.group_id === groupId &&
-        q.answered &&
-        q.answer.trim() !== ""
-      )
+        q.subgroup_id === subgroupId &&
+        q.answered === true &&
+        q.answer &&
+        q.answer.trim().length > 0
+      );
+
+      console.log(
+        '[DEBUG] answeredQs:',
+        `group=${groupId}, subgroup=${subgroupId}`,
+        result.map(q => ({
+          text: q.text,
+          answer: q.answer
+        }))
+      );
+
+      return result;
     },
-    
+
     // 进入编辑模式
     startEditAssistantText() {
       // 编辑内容 = 当前整合文本 + 更新文本（拼接，保留用户 Stage4 修改）
@@ -2810,16 +3129,24 @@ async generateAiVideo() {
 
 /* 照片面板 - 紧凑设计 */
 .photo-panel {
-  overflow-y: auto;
-  max-height: 240px; 
   background: white;
   border-radius: 8px;
   padding: 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  flex-shrink: 0;
-  display: flex; 
+
+  display: flex;
   flex-direction: column;
-  overflow: hidden;
+
+  flex-shrink: 0;     /* 默认不被压缩 */
+}
+
+
+
+.photo-panel-content,
+.narrative-content-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
 /* ✅ [新增] Stage 3/4 专用 */
@@ -2830,6 +3157,7 @@ async generateAiVideo() {
   overflow-y: auto; /* 允许容器滚动 */
   min-height: 0;
 }
+
 .split-title {
   font-size: 13px;
   font-weight: 600;
@@ -2857,10 +3185,28 @@ async generateAiVideo() {
 }
 
 .photo-slot {
-  width: 120px;
-  height: 120px;
+  width: 80px; /* 可调，建议 80-100px */
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #f5f6f7;
   position: relative;
-  flex-shrink: 0; /* ✅ [新增] 防止缩放 */
+  flex-shrink: 0; /* 防止被压缩 */
+}
+
+.photo-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+/* ✅ 优化：鼠标悬停时轻微放大 */
+.photo-slot:hover .photo-preview {
+  transform: scale(1.05);
 }
 
 /* ✅ [新增] AI 照片槽位 */
@@ -2928,13 +3274,6 @@ async generateAiVideo() {
   font-size: 13px;
 }
 
-.photo-preview {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: 8px;
-}
-
 /* 可拖拽分隔条 */
 .resize-handle {
   height: 12px;
@@ -2977,10 +3316,14 @@ async generateAiVideo() {
   padding: 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   overflow-y: auto; 
-
   /* 关键三行 */
-  flex: 1;
-  min-height: 0;
+  /* flex: 1; */
+  /* min-height: 0; */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10; /* 确保在其他内容之上 */
 
   display: flex;
   flex-direction: column;
@@ -3251,7 +3594,7 @@ async generateAiVideo() {
 .narrative-input {
   width: 100%;
   height: 100%; /* ✅ [修改] 占满 */
-  flex: 1; /* ✅ [新增] */
+  flex: 1; 
   border: none;
   outline: none;
   resize: none;
@@ -3372,9 +3715,8 @@ async generateAiVideo() {
 
 /* 分组结果整体容器 */
 .group-section {
-  max-height: 240px;        /* 👈 核心 */
-  overflow-y: auto;         /* 👈 核心 */
-  flex-shrink: 0;           /* 👈 防止挤压其他区域 */
+  overflow-y: auto;      
+  flex-shrink: 0;          
   background: white;
   border-radius: 8px;
   padding: 20px;
@@ -3517,6 +3859,134 @@ async generateAiVideo() {
 
   cursor: pointer;
   transition: all 0.2s;
+}
+
+.narrative-section.collapsed,
+.photo-panel.collapsed {
+  flex: 0 0 auto;
+  max-height: 64px;   /* 只留 header */
+  padding-bottom: 0;
+  overflow: hidden;
+}
+
+/* ===== Timeline Base ===== */
+.timeline-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.timeline.horizontal {
+  display: flex;
+  align-items: flex-start;
+  padding: 16px;
+  gap: 24px;
+}
+
+.timeline.vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding: 16px;
+}
+
+/* ===== Group Node (Horizontal) ===== */
+.timeline-node {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.group-card {
+  background: #fff;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 220px;
+}
+
+
+.group-title.editable {
+  cursor: pointer;
+}
+
+/* ===== Subgroups ===== */
+.subgroup-list,
+.subgroup-list-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.subgroup-box {
+  border: 2px dashed #bbb;
+  border-radius: 6px;
+  padding: 8px;
+  background: #fafafa;
+}
+
+.subgroup-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #746fc5; 
+}
+
+.subgroup-title.editable {
+  cursor: pointer;
+}
+
+
+/* ===== Buttons ===== */
+.insert-group-btn {
+  height: 32px;
+  width: 32px;
+  border-radius: 50%;
+  border: none;
+  background: #e0e0e0;
+  cursor: pointer;
+}
+
+.group-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.danger-btn {
+  background: #e57373;
+  color: white;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.danger-btn.small {
+  font-size: 12px;
+}
+
+/* ===== Vertical Timeline ===== */
+.timeline-node-vertical {
+  position: relative;
+  padding-left: 24px;
+  border-left: 2px solid #ccc;
+}
+
+.group-node-vertical {
+  margin-bottom: 12px;
+}
+
+.subgroup-summary {
+  font-size: 13px;
+  color: #444;
+  margin-bottom: 6px;
+}
+
+/* ===== Inter Group ===== */
+.inter-group-block {
+  margin-top: 12px;
+  padding: 8px;
+  background: #f3f3f3;
+  border-left: 4px solid #999;
 }
 
 </style>
