@@ -52,6 +52,7 @@
               <button v-if="currentStage === 1" class="control-btn" @click="groupPhotosByTime" :disabled="photos.length === 0 || groupingInProgress">
                 {{ groupingInProgress ? '分组中…' : '照片分组' }}
               </button>
+              <button v-if="currentStage === 3" class="control-btn" @click="generateImages" :disabled="isGeneratingImages"> {{ isGeneratingImages ? '🖼️ 生成中...' : '🖼️ 图像补全' }} </button>
               <button
                 class="control-btn"
                 @click="isPhotoPanelCollapsed = !isPhotoPanelCollapsed"
@@ -64,7 +65,7 @@
           <div  class="photo-panel-content"  v-show="!isPhotoPanelCollapsed">
             <div v-if="currentStage !== 3 && currentStage !== 4 && currentStage !== 5" class="photo-grid">
               <div class="photo-slot" v-for="(photo, index) in photos" :key="index">
-                <div class="photo-placeholder" draggable="currentStage === 1" @dragstart="currentStage === 1 && onPhotoDragStart($event, idx)" @click="triggerFileInput(index)" v-if="currentStage === 1">
+                <div class="photo-placeholder" :draggable="currentStage === 1" @dragstart="currentStage === 1 && onPhotoDragStart($event, idx)" @click="triggerFileInput(index)" v-if="currentStage === 1">
                   <template v-if="photo.url">
                     <img :src="photo.url" class="photo-preview" alt="预览图片" />
                   </template>
@@ -74,7 +75,7 @@
                   </template>
                 </div>
 
-                <div class="photo-placeholder" draggable="currentStage === 1" @dragstart="currentStage === 1 && onPhotoDragStart($event, idx)" v-else>
+                <div class="photo-placeholder" :draggable="currentStage === 1" @dragstart="currentStage === 1 && onPhotoDragStart($event, idx)" v-else>
                   <template v-if="photo.url">
                     <img :src="photo.url" class="photo-preview" alt="预览图片" />
                   </template>
@@ -86,7 +87,7 @@
               </div>
             </div>
 
-            <div v-else-if="currentStage === 3 || currentStage === 4" class="split-container">
+            <!-- <div v-else-if="currentStage === 3 || currentStage === 4" class="split-container">
               <div class="split-title">🎞️ 原照片集</div>
 
               <div class="top-panel">
@@ -145,6 +146,118 @@
                   </div>
                 </div>
               </div>
+            </div> -->
+            <div v-else-if="currentStage === 3 || currentStage === 4" class="group-section">
+              <div class="timeline horizontal">
+                <div
+                  v-for="(group, gIdx) in photoGroupsWithAi"
+                  :key="gIdx"
+                  class="timeline-node"
+                >
+                  <div class="group-card">
+                    <div class="group-title">
+                      {{ group.name }}
+                    </div>
+                    <div class="subgroup-list">
+                      <div
+                        v-for="(subgroup, sgIdx) in group.subgroups"
+                        :key="sgIdx"
+                        class="subgroup-box"
+                        :class="{
+                          active: isActiveSubgroup(gIdx, sgIdx),
+                          reviewing:
+                            isActiveSubgroup(gIdx, sgIdx) &&
+                            subgroup.stage4?.status === 'reviewing',
+                          reviewed: subgroup.stage4?.status === 'done'
+                        }"
+                        @click="selectSubgroup(gIdx, sgIdx)"
+                      >
+                        <div class="subgroup-title">
+                          {{ subgroup.name }}
+                        </div>
+                        <div class="photo-grid">
+                          <!-- 原始照片 -->
+                          <div
+                            class="photo-slot"
+                            v-for="idx in subgroup.photo_indices"
+                            :key="idx"
+                          >
+                            <div class="photo-placeholder">
+                              <template v-if="photos[idx]?.url">
+                                <img
+                                  :src="photos[idx].url"
+                                  class="photo-preview"
+                                  alt="预览图片"
+                                  @click="openImagePreview(photos[idx]?.url)"
+                                />
+                              </template>
+                              <template v-else>
+                                <span class="photo-number">{{ idx + 1 }}</span>
+                                <span class="add-icon">+</span>
+                              </template>
+                            </div>
+                          </div>
+                          
+                          <!-- AI增强照片 -->
+                          <div
+                            class="photo-slot"
+                            v-for="(ai, aiIdx) in subgroup.ai_photos"
+                            :key="'ai-' + aiIdx"
+                          >
+                            <div
+                              class="photo-placeholder"
+                              style="position: relative;"
+                            >
+                              <template v-if="ai.url">
+                                <img
+                                  :src="ai.url"
+                                  class="photo-preview"
+                                  alt="AI增强图片"
+                                  @click="openImagePreview(ai.url)"
+                                />
+                                <span class="ai-photo-label">{{ getLetterIndex(aiIdx) }}</span>
+                                <span class="ai-photo-iter-label">{{ ai.iterationLabel }}</span>
+                              </template>
+                              <template v-else>
+                                <span class="photo-number">{{ aiIdx + 1 }}</span>
+                                <span class="add-icon">+</span>
+                              </template>
+                            </div>
+                            <div class="ai-photo-controls" style="display:flex; gap:4px; width:100%; margin-top:4px;">
+                              <button
+                                class="edit-photo-btn"
+                                @click="openSuggestionModal(ai)"
+                                :disabled="!activeSubgroup || activeSubgroup.stage4?.status !== 'reviewing'"> 指令
+                              </button>
+                              <button
+                                class="edit-photo-btn"
+                                style="color: #ff4d4f; border-color: #ffccc7;"
+                                @click="deleteAiPhoto(subgroup, aiIdx)"> 删除
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <!-- ================= 图片放大预览模态框 ================= -->
+              <div
+                v-if="imagePreview.visible"
+                class="image-preview-backdrop"
+                @click.self="closeImagePreview"
+              >
+                <div class="image-preview-modal">
+                  <button class="close-btn" @click="closeImagePreview">✕</button>
+
+                  <img
+                    :src="imagePreview.url"
+                    class="image-preview-large"
+                  />
+                </div>
+              </div>
+
             </div>
 
             <div v-else-if="currentStage === 5" class="split-container">
@@ -273,7 +386,7 @@
                 </div>
 
                 <!-- group 操作 -->
-                <div class="group-actions">
+                <div class="group-actions" v-if="currentStage === 1">
                   <button class="control-btn" style="padding: 4px 8px; font-size: 12px;" @click="addSubgroup(gIdx)">＋ 子分组</button>
                   <button class="control-btn" style="padding: 4px 8px; font-size: 12px; background: #ffebee; color: #e53935; border-color: #ffcdd2;" @click="deleteGroup(gIdx)">删除阶段</button>
                 </div>
@@ -281,7 +394,7 @@
 
               <!-- 插入 group（右侧） -->
               <button
-                class="insert-group-btn"
+                class="insert-group-btn" v-if="currentStage === 1"
                 @click="addNewGroupAfter(gIdx)"
               >＋</button>
             </div>
@@ -467,14 +580,13 @@
        <div class= "handle-line"></div>
         </div>
 
-        <div v-if="currentStage != 2" class="narrative-section" :class="{ collapsed: isNarrativeCollapsed }">
+        <div v-if="currentStage == 1" class="narrative-section" :class="{ collapsed: isNarrativeCollapsed }">
           <div class="panel-header">
             <h3>📝 用户口述</h3>
             <div class="panel-controls">
               <button class="control-btn" @click="calculateMemoryMetrics">保存文本</button>
               <button class="control-btn" @click="reselectText">🔄 重新口述</button>
 
-              <button v-if="currentStage === 3" class="control-btn" @click="generateImages">图像补全</button>
               <button
                 class="control-btn"
                 @click="isNarrativeCollapsed = !isNarrativeCollapsed"
@@ -504,27 +616,34 @@
           <span class="status-indicator">● 在线</span>
         </div>
 
-        <div class="progress-section" v-if="currentStage === 2 || currentStage === 4">
+        <div class="progress-section" v-if="currentStage === 2">
           <div class="progress-bar">
             <div class="progress-fill" :style="{ width: progressPercentage + '%' }"></div>
           </div>
-          <span class="progress-text" v-if="currentStage === 4">
+          <!-- <span class="progress-text" v-if="currentStage === 4">
              已迭代 {{ iterationCount - 1 }} 轮
-          </span>
+          </span> -->
           <span class="progress-text" v-if="currentStage === 2">
             {{ answeredCount }}/{{ questions.length }} 问题已回答
           </span>
 
         </div>
-
+        <!-- ========== Stage 3 & 4：统一叙事面板（可拖拽） ========== -->
         <div 
-          v-if="currentStage === 3 || currentStage === 4" 
-          class="assistant-integration-result" 
-          :style="{ 'max-height': aiResultHeight + 'px', 'height': aiResultHeight + 'px' }"
+          v-if="currentStage === 3 || (currentStage === 4 && activeSubgroup)"
+          class="assistant-integration-result"
+          :style="{ height: aiResultHeight + 'px', 'max-height': aiResultHeight + 'px' }"
           style="margin:10px 0; padding:10px; border-radius:6px; border:1px dashed #d0d7de; background:#fafafa; position: relative; overflow: hidden; display: flex; flex-direction: column;"
         >
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-shrink: 0;">
-            <strong>🧾 my photo story</strong>
+          <!-- Header -->
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-shrink:0;">
+            <strong v-if="currentStage === 4 && activeSubgroup">
+              🧠 回顾：{{ activeSubgroup.groupName }} / {{ activeSubgroup.name }}
+            </strong>
+            <strong v-else>
+              🧾 my photo story
+            </strong>
+
             <div style="display:flex; gap:8px; align-items:center;">
               <template v-if="currentStage === 3 || currentStage === 4">
                 <button
@@ -532,84 +651,135 @@
                   class="control-btn"
                   @click="startEditAssistantText"
                   style="padding:4px 8px; font-size:12px;"
-                >修改</button>
+                >
+                  修改
+                </button>
 
                 <span v-if="assistantEditMode" style="display:flex; gap:6px;">
-                  <button class="control-btn primary" @click="confirmAssistantEdit" :disabled="isUpdatingText" style="padding: 4px 4px; font-size: 14px;">
+                  <button
+                    class="control-btn primary"
+                    @click="confirmAssistantEdit"
+                    :disabled="isUpdatingText"
+                    style="padding:4px 4px; font-size:14px;"
+                  >
                     确认
                   </button>
-                  <button class="control-btn primary" @click="cancelAssistantEdit" :disabled="isUpdatingText" style="padding: 4px 4px; font-size: 14px;">
+                  <button
+                    class="control-btn primary"
+                    @click="cancelAssistantEdit"
+                    :disabled="isUpdatingText"
+                    style="padding:4px 4px; font-size:14px;"
+                  >
                     取消
                   </button>
                 </span>
 
-                <span v-if="assistantEditedByUser" style="font-size:12px; color:#667eea; margin-left:6px;">已编辑</span>
+                <span
+                  v-if="assistantEditedByUser"
+                  style="font-size:12px; color:#667eea; margin-left:6px;"
+                >
+                  已编辑
+                </span>
               </template>
             </div>
-            <button 
-              v-if="currentStage === 4"
-              class="control-btn"
-              @click="generateNewImagesFromNarrative"
-              :disabled="iterationStopped || !assistantUpdatedText" title="根据新的叙事文本（紫色部分）生成新图片"
-              style="padding: 4px 8px; font-size: 12px;">
-              新一轮图像更新
-            </button>
-            <div v-else style="font-size:12px; color:#666;">
+
+            <div style="font-size:12px; color:#666;">
               <span v-if="integrating">整合中...</span>
               <span v-if="isUpdatingText">文本更新中...</span>
             </div>
           </div>
-          
-          <div 
-            v-if="!assistantEditMode && (assistantIntegratedText || assistantUpdatedText)" 
-            v-html="highlightedStoryText"
-            style="white-space:pre-wrap; overflow:auto; color:#222; line-height:1.6; flex: 1; min-height: 0;"
-          >
-            </div>
 
-          <div 
-            v-else-if="assistantEditMode" 
-            style="flex: 1; display: flex; flex-direction: column; min-height: 0;"
+          <!-- Body -->
+          <div
+            v-if="!assistantEditMode"
+            style="white-space:pre-wrap; overflow:auto; color:#222; line-height:1.6; flex:1; min-height:0;"
+          >
+            <!-- Stage 3：完整故事 -->
+            <template v-if="currentStage === 3">
+              <div v-html="highlightedStoryText"></div>
+            </template>
+
+            <!-- Stage 4：子组回忆 -->
+            <template v-else-if="currentStage === 4 && activeSubgroup">
+              <template v-for="pair in filteredSentencePairs" :key="pair.index">
+                <p
+                  :style="{
+                    color: pair.origin_pair_index === null ? '#4a90e2' : '#222',
+                    background: pair.origin_pair_index === null ? 'rgba(74,144,226,0.08)' : 'transparent',
+                    padding: pair.origin_pair_index === null ? '8px 12px' : '0',
+                    borderRadius: pair.origin_pair_index === null ? '4px' : '0',
+                    marginBottom: '12px'
+                  }"
+                >
+                  {{ pair.sentence }}
+                  <span
+                    v-if="pair.origin_pair_index === null"
+                    style="font-size:12px; color:#4a90e2; margin-left:8px;"
+                  >
+                    （回忆补充）
+                  </span>
+                </p>
+              </template>
+            </template>
+          </div>
+
+          <!-- 编辑态 -->
+          <div
+            v-else
+            style="flex:1; display:flex; flex-direction:column; min-height:0;"
           >
             <textarea
               v-model="assistantEditBuffer"
-              rows="6"
               style="
-                flex: 1; 
-                font-size: 14px; 
-                padding: 10px; 
-                border: 1px solid #ccc; 
-                border-radius: 4px; 
-                resize: vertical;
-                min-height: 0;
+                flex:1;
+                font-size:14px;
+                padding:10px;
+                border:1px solid #ccc;
+                border-radius:4px;
+                resize:vertical;
+                min-height:0;
               "
-              placeholder="请在此编辑整合后的照片故事……"
+              placeholder="请编辑整合后的照片故事……"
             ></textarea>
           </div>
 
-          <div 
-            v-else 
-            style="color:#888; font-size:13px; flex: 1; display: flex; align-items: center;"
-          >
-            尚无整合结果，点击下方「整合文本」或回答问题后再试
-          </div>
-          
-          <div 
-            class="resize-handle-ai" 
+          <!-- Resize handle（与 Stage 3 完全一致） -->
+          <div
+            class="resize-handle-ai"
             @mousedown="startResizeAiResult"
-            :class="{ 'resizing': isResizingAiResult }">
-            <div class= "handle-line"></div>
+            :class="{ resizing: isResizingAiResult }"
+          >
+            <div class="handle-line"></div>
           </div>
         </div>
 
-        <div v-if="currentStage === 4" class="ai-modify-section" style="margin:10px 0; text-align:center; padding: 0 20px;"> 
+
+
+        <!-- <div v-if="currentStage === 4" class="ai-modify-section" style="margin:10px 0; text-align:center; padding: 0 20px;"> 
           <button 
             class="control-btn" 
             @click="fetchStage4Questions" 
-            :disabled="isFetchingS4Questions || iterationStopped" style="width: 100%; margin-bottom: 10px;"
+            :disabled="isFetchingS4Questions || !activeSubgroup || activeSubgroup.stage4.status !== 'reviewing'" style="width: 100%; margin-bottom: 10px;"
           >
-            {{ isFetchingS4Questions ? '获取中...' : '获取新一轮提问' }} </button>
-        </div>
+            {{ isFetchingS4Questions ? '获取问题中...' : '围绕这组照片继续回忆' }} 
+          </button>
+        </div> -->
+        <!-- <div
+          v-if="
+            currentStage === 4 &&
+            activeSubgroup &&
+            activeSubgroup.stage4.addedSentenceIndices.length > 0
+          "
+          style="margin-top:12px; text-align:center;"
+        >
+          <button
+            class="control-btn primary"
+            @click="generateNewImagesFromNarrative"
+          >
+            仅为新增回忆生成图片
+          </button>
+        </div> -->
+
 
 
         <div class="questions-container" v-if="currentStage === 2">
@@ -648,6 +818,21 @@
         </div>
         
         <div class="questions-container" v-if="currentStage === 4 && stage4Questions.length > 0" style="padding-top: 0;">
+          <!-- 阶段说明 -->
+          <div
+            style="
+              font-size:13px;
+              color:#555;
+              background:#f8f9fb;
+              border-left:4px solid #4a90e2;
+              padding:10px 12px;
+              margin-bottom:10px;
+              border-radius:4px;
+            "
+          >
+            AI 正在帮助你回忆当时<strong>画面之外</strong>的部分，  
+            比如没有被拍下的人、声音、情绪或某个瞬间。
+          </div>
           <div 
             v-for="(question, index) in stage4Questions" 
             :key="'s4-'+index"
@@ -680,16 +865,6 @@
           </div>
         </div>
 
-
-        <div v-if="currentStage === 4" style="display:flex; flex-direction:column; gap:8px; margin: 0 20px 20px 20px;">
-          <button 
-            class="control-btn" 
-            @click="stopIteration" 
-            style="margin: 0; background: #f5f5f5; width: 100%;" 
-            :disabled="iterationStopped"> 已满意，终止迭代
-          </button>
-        </div>
-
         <button 
           v-if="currentStage === 2" 
           class="control-btn primary"
@@ -697,23 +872,79 @@
           开始提问
         </button>
 
-        <button 
-          v-if="currentStage === 3 || (currentStage === 4 && stage4Questions.length > 0 && answeredCount > 0)" class="control-btn primary"
-          :disabled="integrating || isUpdatingText || iterationStopped" @click="currentStage === 3 ? integrateText() : updateText()">
+        <!-- <button
+          v-if="
+            currentStage === 3 ||
+            (
+              currentStage === 4 &&
+              stage4Questions.some(q => q.answered && q.answer && q.answer.trim())
+            )
+          "
+          class="control-btn primary"
+          @click="currentStage === 3 ? integrateText() : updateText()"
+        >
           {{ integrating ? '整合中...' : (isUpdatingText ? '更新中...' : (currentStage === 3 ? '整合文本' : '整合文本')) }}
+        </button> -->
+        <button
+          v-if=" currentStage === 3 " class="control-btn primary"
+          @click="integrateText()"
+        >
+          {{ integrating ? '整合中...' : (isUpdatingText ? '更新中...' : '整合文本' ) }}
         </button>
+        <div
+          v-if="currentStage === 4 && activeSubgroup"
+          class="assistant-footer"
+          style="display: flex; flex-direction: column; gap: 8px;"
+        >
+          <button
+            v-if="activeSubgroup.stage4.status === 'reviewing'"
+            class="control-btn"
+            @click="fetchStage4Questions"
+            :disabled="isFetchingS4Questions || !activeSubgroup || activeSubgroup.stage4.status !== 'reviewing'" 
+            style="width: 80%; display: block; margin: 0 auto; background: linear-gradient(135deg, #c3c9e8, #d4c5e0); color: white; border-radius: 6px; font-size: 14px; font-weight: bold;"
+          >
+            {{ isFetchingS4Questions ? '获取问题中...' : '继续回忆'}}
+          </button>
+
+          <button
+            v-if="stage4Questions.some(q => q.answered)"
+            class="control-btn"
+            @click="updateText"
+            style="width: 80%; display: block; margin: 0 auto; background: linear-gradient(135deg, #c3c9e8, #d4c5e0); color: white; border-radius: 6px; font-size: 14px; font-weight: bold;"
+          >
+            整合回忆文本
+          </button>
+
+          <button
+            v-if="activeSubgroup.stage4.addedSentenceIndices.length > 0"
+            class="control-btn"
+            @click="generateNewImagesFromNarrative"
+            style="width: 80%; display: block; margin: 0 auto; background: linear-gradient(135deg, #c3c9e8, #d4c5e0); color: white; border-radius: 6px; font-size: 14px; font-weight: bold;"
+          >
+            为新增回忆生成图片
+          </button>
+
+          <button
+            class="control-btn"
+            @click="finishSubgroupReview"
+            style="width: 80%; display: block; margin: 0 auto; background: linear-gradient(135deg, #c3c9e8, #d4c5e0); color: white; border-radius: 6px; font-size: 14px; font-weight: bold;"
+          >
+            完成该子组回忆
+          </button>
+        </div>
+
         
     <div v-if="showSuggestionModal" class="suggestion-modal-backdrop">
       <div class="suggestion-modal">
-        <h3>对照片 {{ getLetterIndex(suggestionForPhotoIndex) }} 的建议</h3>
+        <h3>对照片 {{ currentEditingAi ? currentEditingAi.iterationLabel : '' }} 的建议</h3>
         <textarea
-          v-model="currentSuggestionText"
+          v-model="promptEditBuffer"
           rows="5"
           placeholder="请输入你对这张照片的具体建议，例如：色调更暖、人物锐化..."
         ></textarea>
         <div class="modal-actions">
           <button class="control-btn" @click="showSuggestionModal = false">取消</button>
-          <button class="control-btn primary" @click="submitIndividualPhotoUpdate" :disabled="!currentSuggestionText.trim() || isUpdatingPhoto">
+          <button class="control-btn primary" @click="submitIndividualPhotoUpdate" :disabled="!promptEditBuffer.trim() || isUpdatingPhoto">
             {{ isUpdatingPhoto ? '更新中...' : '立即更新' }}
           </button>
         </div>
@@ -735,7 +966,18 @@
              style="display:flex; gap:12px; border:1px solid #eee; padding:10px; margin-bottom:10px; border-radius:6px; align-items:flex-start;">
           
           <div style="width: 80px; flex-shrink:0;">
-             <img v-if="item.photo" :src="item.photo" style="width:100%; border-radius:4px; border:1px solid #ddd;">
+            <template
+              v-if="getBase64PhotosBySubgroup(item.group_index, item.subgroup_index).length > 0"
+            >
+              <div style="display:flex; flex-direction:column; gap:4px;">
+                <img
+                  v-for="(img, i) in getBase64PhotosBySubgroup(item.group_index, item.subgroup_index)"
+                  :key="i"
+                  :src="img"
+                  style="width:100%; border-radius:4px; border:1px solid #ddd;"
+                />
+              </div>
+            </template>
              <div v-else style="width:100%; height:80px; background:#f0f0f0; display:flex; align-items:center; justify-content:center; color:#ccc; font-size:10px;">纯文生图</div>
           </div>
 
@@ -825,7 +1067,7 @@ export default {
       isResizingAiResult: false,
       startY_ai: 0,
       startHeight_ai: 0,
-      iterationStopped: false,
+      // iterationStopped: false,
       showSuggestionModal: false,
       suggestionForPhotoIndex: null,
       currentSuggestionText: '',
@@ -835,6 +1077,12 @@ export default {
       groupingInProgress: false,
       isPhotoPanelCollapsed: false,
       isNarrativeCollapsed: false,
+      imagePreview: {
+        visible: false,
+        url: null,
+      },
+      // stage 4 中当前被选中用于回忆的 subgroup
+      activeSubgroup: null, // { groupIdx: Number, subgroupIdx: Number }
       // 视频生成状态
       isGeneratingVideo: false,
       videoGenerationError: null,
@@ -848,11 +1096,27 @@ export default {
       
       // ✅ [Priority 1] Prompt 确认相关状态
       showPromptModal: false,
+      isGeneratingImages: false,
       pendingSentencePairs: [], // 暂存待用户确认的 pairs
       pendingBase64Photos: [], // 暂存原始图片 base64，供生图使用
     }
   },
   computed: {
+    // 筛选当前 activeSubgroup 的 sentencePairs
+    filteredSentencePairs() {
+      if (!this.activeSubgroup) return [];
+      const { groupIdx, subgroupIdx } = this.activeSubgroup;
+      return this.sentencePairs.filter(p =>
+        p.group_index == groupIdx &&
+        p.subgroup_index == subgroupIdx
+      );
+    },
+    subgroupNarrativeText() {
+      return this.filteredSentencePairs
+        .map(p => p.sentence)
+        .filter(Boolean)
+        .join('\n\n');
+    },
     photoGroupsWithSummaries() {
       return this.photoGroups.map((group, gIdx) => ({
         ...group,
@@ -861,6 +1125,29 @@ export default {
           summary: this.subgroupSummaries[gIdx]?.[sgIdx]?.data || {}
         }))
       }));
+    },
+    // 将AI照片整合到分组结构中
+    photoGroupsWithAi() {
+      // 创建深拷贝，避免直接修改原数据
+      const groups = JSON.parse(JSON.stringify(this.photoGroups));
+      
+      // 为每个分组添加AI照片
+      groups.forEach((group, gIdx) => {
+        group.subgroups.forEach((subgroup, sgIdx) => {
+          // 初始化AI照片索引数组
+          subgroup.ai_photo_indices = [];
+          
+          // 查找该subgroup对应的AI照片
+          // 这里假设每个subgroup的照片索引可以用来查找对应的AI照片
+          subgroup.photo_indices.forEach(idx => {
+            // 如果有对应的AI照片，添加到列表中
+            if (this.aiPhotos[idx]) {
+              subgroup.ai_photo_indices.push(idx);
+            }
+          });
+        });
+      });
+      return groups;
     },
     interQuestionsMap() {
       const map = {};
@@ -1018,7 +1305,7 @@ export default {
         this.aiSuggestion = '';
         this.iterationCount = 1;
         this.currentQuestionIndex = 0;
-        this.iterationStopped = false;
+        // this.iterationStopped = false;
       }
       if (stage === 2) {
         this.currentQuestionIndex = 0;
@@ -1056,6 +1343,9 @@ export default {
                 isEditing: false,
                 lastUpdatedBy: "init"
               }
+            }
+            if (!sg.ai_photos) {
+              sg.ai_photos = []
             }
           })
         })
@@ -1724,46 +2014,6 @@ export default {
       console.log(`Stage ${stage} 的口述内容已保存：`, content);
       alert(`第 ${stage} 阶段的口述内容已保存`);
     },
-    // async integrateText() {
-    //   if (this.currentStage !== 3) {
-    //     alert("整合文本仅在 Stage 3 可用");
-    //     return;
-    //   }
-    //   const narrative = this.userNarratives[2] || '';
-    //   const qa_pairs = (this.questions || [])
-    //     .filter(q => q.answered && q.answer && q.answer.trim())
-    //     .map(q => ({ question: q.text, answer: q.answer.trim() }));
-    //   if (!narrative && qa_pairs.length === 0) {
-    //     alert("没有可供整合的口述或问答，请先在 Stage2 完成口述与回答。");
-    //     return;
-    //   }
-
-    //   console.log("准备发往 /integrate-text 的 payload:", { narrative, qa_pairs });
-
-    //   try {
-    //     this.integrating = true;
-    //     this.assistantIntegratedText = '';
-    //     this.assistantUpdatedText = '';
-    //     const resp = await axios.post('http://127.0.0.1:5000/integrate-text', {
-    //       narrative,
-    //       qa_pairs,
-    //       options: { output_format: 'text' }
-    //     }, { timeout: 120000 });
-
-    //     if (resp.data && resp.data.integrated_text) {
-    //       this.assistantIntegratedText = String(resp.data.integrated_text).trim();
-    //       this.$message?.success?.("整合完成，已在 AI 面板显示（只读）");
-    //     } else {
-    //       console.error("integrate-text 返回结构异常：", resp.data);
-    //       alert("整合失败，请查看后端日志");
-    //     }
-    //   } catch (err) {
-    //     console.error("整合文本错误：", err);
-    //     alert("整合文本时出错，请查看控制台或后端日志");
-    //   } finally {
-    //     this.integrating = false;
-    //   }
-    // },
     async integrateText() {
       if (this.currentStage !== 3) {
         alert("整合文本仅在 Stage 3 可用");
@@ -1871,12 +2121,28 @@ export default {
         alert("生成 Prompts 时出错，请查看控制台");
       }
     },
-    /*
     // ✅ [Priority 1] 用户删除不需要的 Prompt
     removePromptPair(index) {
       this.pendingSentencePairs.splice(index, 1);
     },
-    */
+    getBase64PhotosBySubgroup(groupIdx, subgroupIdx, maxNum = 4) {
+      if (
+        groupIdx == null ||
+        subgroupIdx == null ||
+        !this.photoGroups[groupIdx] ||
+        !this.photoGroups[groupIdx].subgroups[subgroupIdx]
+      ) {
+        return [];
+      }
+
+      const photoIndices =
+        this.photoGroups[groupIdx].subgroups[subgroupIdx].photo_indices || [];
+
+      return photoIndices
+        .slice(0, maxNum)
+        .map(idx => this.pendingBase64Photos[idx])
+        .filter(Boolean);
+    },
 
     // ✅ [Priority 1] 第二步：用户确认后，真正调用生图
     // 💡 【核心修改】接受 toGenerate 参数，否则使用 this.pendingSentencePairs (兼容Stage4的手动更新)
@@ -1893,18 +2159,33 @@ export default {
 
       this.aiPhotos = [];
       this.allPhotos = [];
+      this.showPromptModal = false;
+      this.isGeneratingImages = true;
 
       try {
-        // 4️⃣ 构建 payload：取前4张原图作参考
-        const payloadToSend = toGenerate.map(item => ({
-          index: item.index,
-          sentence: item.sentence,
-          prompt: item.prompt,
-          group_index: item.group_index ?? null,
-          subgroup_index: item.subgroup_index ?? null,
-          photo: this.pendingBase64Photos.slice(0, 4)
-        }));
+        // 4️⃣ 构建 payload
+        const payloadToSend = toGenerate.map(item => {
+          const refPhotos = this.getBase64PhotosBySubgroup(
+            item.group_index,
+            item.subgroup_index,
+            4
+          );
 
+          // 兜底：如果 subgroup 下真的一张都没有
+          const finalPhotos =
+            refPhotos.length > 0
+              ? refPhotos
+              : this.pendingBase64Photos.slice(0, 1);
+
+          return {
+            index: item.index,
+            sentence: item.sentence,
+            prompt: item.prompt,
+            group_index: item.group_index ?? null,
+            subgroup_index: item.subgroup_index ?? null,
+            photo: finalPhotos
+          };
+        });
 
         console.log(`[Stage 3] 准备发送 ${payloadToSend.length} 个生成任务...`);
         const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
@@ -1963,6 +2244,24 @@ export default {
           };
           this.aiPhotos.push(aiObj);
           aiMap[idx] = aiObj;
+
+          const gIdx = aiObj.group_index
+          const sgIdx = aiObj.subgroup_index
+
+          if (
+            gIdx != null &&
+            sgIdx != null &&
+            this.photoGroups[gIdx] &&
+            this.photoGroups[gIdx].subgroups[sgIdx]
+          ) {
+            const sg = this.photoGroups[gIdx].subgroups[sgIdx]
+
+            if (!sg.ai_photos) {
+              this.$set(sg, 'ai_photos', [])
+            }
+
+            sg.ai_photos.push(aiObj)
+          }
         }
 
         // 6️⃣ 构建 allPhotos（严格按 sentencePairs 顺序）
@@ -2024,6 +2323,55 @@ export default {
       } catch (error) {
         console.error("Error confirming images:", error);
         alert("确认生成时出错");
+      } finally {
+        // ✅ 无论成功失败都恢复状态
+        this.isGeneratingImages = false;
+      }
+    },
+    // ================= 图片预览 =================
+    openImagePreview(url) {
+      if (!url) return;
+      this.imagePreview.url = url;
+      this.imagePreview.visible = true;
+    },
+
+    closeImagePreview() {
+      this.imagePreview.visible = false;
+      this.imagePreview.url = null;
+    },
+    isActiveSubgroup(groupIdx, subgroupIdx) {
+      if (!this.activeSubgroup) return false;
+
+      return (
+        this.activeSubgroup.groupIdx === groupIdx &&
+        this.activeSubgroup.subgroupIdx === subgroupIdx
+      );
+    },
+    selectSubgroup(groupIdx, subgroupIdx) {
+      const group = this.photoGroupsWithAi[groupIdx];
+      const subgroup = group.subgroups[subgroupIdx];
+
+      this.activeSubgroup = subgroup;
+      this.activeSubgroup.groupIdx = groupIdx;
+      this.activeSubgroup.subgroupIdx = subgroupIdx;
+      this.activeSubgroup.groupName = group.name;
+
+      if (!subgroup.stage4) {
+        subgroup.stage4 = {
+          status: 'idle',
+          addedSentenceIndices: []
+        };
+      }
+
+      if (subgroup.stage4.status === 'idle') {
+        subgroup.stage4.status = 'reviewing';
+        this.stage4Questions = [];
+        this.stage4QA = [];
+        this.currentQuestionIndex = 0;
+      } else if (subgroup.stage4.status === 'done') {
+        // 已完成的 subgroup：只读回顾态
+        this.stage4Questions = [];
+        this.currentQuestionIndex = null;
       }
     },
 
@@ -2190,17 +2538,32 @@ export default {
       this.$message?.success?.('整合文本已更新');
     },
     async fetchStage4Questions() {
+      if (!this.activeSubgroup || this.activeSubgroup.stage4?.status !== 'reviewing') {
+        return;
+      }
+
       console.log('开始获取 Stage 4 问题...');
       if (this.currentStage !== 4) return;
 
       this.isFetchingS4Questions = true;
       this.stage4Questions = [];
       try {
+        
+        let aiPhotosForQA = this.aiPhotos;
+        if (this.activeSubgroup) {
+          const { groupIdx, subgroupIdx } = this.activeSubgroup;
+          aiPhotosForQA = this.aiPhotos.filter(p =>
+            p.group_index == groupIdx &&
+            p.subgroup_index == subgroupIdx
+          );
+        }
+        const aiPhotoBase64s = await Promise.all(
+          aiPhotosForQA.map(p => this.urlToBase64(p.url))
+        );
+
+
         const base64Photos = await Promise.all(
           this.photos.map(photo => this.convertToBase64(photo.file))
-        );
-        const aiPhotoBase64s = await Promise.all(
-          this.aiPhotos.map(p => this.urlToBase64(p.url))
         );
         const aiPhotoURLs = aiPhotoBase64s.filter(Boolean);
 
@@ -2211,12 +2574,27 @@ export default {
         }
 
         // ✅ [Priority 2] 传入当前完整叙事，供后端做上下文推理
-        const currentNarrative = this.assistantUpdatedText || this.assistantIntegratedText;
+        let currentNarrative = this.assistantUpdatedText || this.assistantIntegratedText;
+
+        // 如果选中了 subgroup，只使用该 subgroup 的文本
+        if (this.activeSubgroup) {
+          currentNarrative = this.subgroupNarrativeText;
+          if (!currentNarrative.trim()) {
+            alert('该子分组暂无文本内容，请先生成图像或整合文本');
+            this.isFetchingS4Questions = false;
+            return;
+          }
+        }
 
         const response = await axios.post('http://127.0.0.1:5000/generate-stage4-questions', {
           original_photos: base64Photos,
           ai_photos_urls: aiPhotoURLs,
-          narrative: currentNarrative, // ✅ 传入
+          narrative: currentNarrative, 
+          // 传入 subgroup 信息，让后端知道只针对该 subgroup 提问
+          subgroup_context: this.activeSubgroup ? {
+            group_idx: this.activeSubgroup.groupIdx,
+            subgroup_idx: this.activeSubgroup.subgroupIdx
+          } : null
         });
 
         this.stage4Questions = response.data.questions || [];
@@ -2245,25 +2623,59 @@ export default {
         return;
       }
 
-      console.log("准备发往 /update-text 的 payload:", {
-        current_narrative: this.assistantUpdatedText || this.assistantIntegratedText,
-        new_qa_pairs: qa_pairs
-      });
-
       try {
         this.isUpdatingText = true;
-        this.assistantUpdatedText = '';
-        const resp = await axios.post('http://127.0.0.1:5000/update-text', {
-          current_narrative: this.assistantIntegratedText,
-          new_qa_pairs: qa_pairs
-        }, { timeout: 120000 });
 
-        if (resp.data && resp.data.updated_text) {
-          this.assistantUpdatedText = String(resp.data.updated_text).trim();
-          this.$message?.success?.("文本更新完成，已在 AI 面板显示（紫色）");
+        if (this.activeSubgroup) {
+          // ==== 模式A：子分组模式 ====
+          const { groupIdx, subgroupIdx } = this.activeSubgroup;
+          console.log(`当前处于子分组模式：group ${groupIdx} - subgroup ${subgroupIdx}`);
+          
+          const resp = await axios.post('http://127.0.0.1:5000/update-text', {
+            current_narrative: this.subgroupNarrativeText, // 仅传该 subgroup 文本
+            new_qa_pairs: qa_pairs,
+            subgroup_context: { groupIdx, subgroupIdx }
+          }, { timeout: 120000 });
+
+          if (resp.data && resp.data.updated_text) {
+            const newSentence = resp.data.updated_text.trim();
+            const newIndex = this.sentencePairs.length;
+            
+            this.sentencePairs.push({
+              index: newIndex,
+              sentence: newSentence,
+              prompt: null, // 还没生图
+              group_index: groupIdx,
+              subgroup_index: subgroupIdx,
+              origin_pair_index: null, // 标记为“回忆补充”
+            });
+            if (!this.activeSubgroup.stage4.addedSentenceIndices) {
+              this.$set(this.activeSubgroup.stage4, 'addedSentenceIndices', []);
+            }
+            this.activeSubgroup.stage4.addedSentenceIndices.push(newIndex);
+
+            this.$message?.success?.("回忆补充已添加到该子分组");
+
+          } else {
+            console.error("update-text 返回结构异常：", resp.data);
+            alert("文本更新失败，请查看后端日志");
+          }
         } else {
-          console.error("update-text 返回结构异常：", resp.data);
-          alert("文本更新失败，请查看后端日志");
+          // ==== 模式B：全局模式 ====
+          console.log("当前处于全局模式，更新整体叙事文本");
+
+          const resp = await axios.post('http://127.0.0.1:5000/update-text', {
+            current_narrative: this.assistantIntegratedText,
+            new_qa_pairs: qa_pairs
+          }, { timeout: 120000 });
+
+          if (resp.data && resp.data.updated_text) {
+            this.assistantUpdatedText = String(resp.data.updated_text).trim();
+            this.$message?.success?.("文本更新完成，已在 AI 面板显示（紫色）");
+          } else {
+            console.error("update-text 返回结构异常：", resp.data);
+            alert("文本更新失败，请查看后端日志");
+          }
         }
       } catch (err) {
         console.error("更新文本错误：", err);
@@ -2273,283 +2685,533 @@ export default {
       }
     },
 
+
     // ==========================================================
     // === ❗️【核心修复】智能复用逻辑 (Smart Reuse) ❗️ ===
     // ==========================================================
+    // async generateNewImagesFromNarrative() {
+    //   console.log('S4: 开始智能更新画面 (复用检测)...');
+      
+    //   // ✅ 获取最新的全量文本
+    //   const narrative = this.assistantUpdatedText || this.assistantIntegratedText;
+
+    //   if (!narrative) {
+    //     alert("AI 叙事为空，请先整合文本");
+    //     return;
+    //   }
+
+    //   try {
+    //     const base64Photos = await Promise.all(
+    //       this.photos.map(photo => this.convertToBase64(photo.file))
+    //     );
+
+    //     // 1. 获取新故事的分镜 Prompts
+    //     const response = await axios.post('http://127.0.0.1:5000/generate-prompts', {
+    //       photos: base64Photos,
+    //       narrative: narrative,
+    //     });
+
+    //     const newSentencePairs = response.data.sentence_pairs || [];
+    //     const toGenerate = [];
+    //     const nextRoundAiPhotos = [];
+    //     const BACKEND_BASE = "http://127.0.0.1:5000";
+
+    //     // 2. 遍历新分镜，尝试复用
+    //     console.log(`[Smart Reuse] 收到 ${newSentencePairs.length} 个新分镜，开始比对...`);
+
+    //     newSentencePairs.forEach(pair => {
+    //         // Case A: 对应原图 (无需处理，后续构建 allPhotos 会处理)
+    //         if (!pair.prompt) return; 
+
+    //         // Case B: 需要 AI 生成 -> 尝试在 aiPhotos 中找相似 Prompt
+    //         let bestMatch = null;
+    //         let maxScore = 0;
+
+    //         for (const oldP of this.aiPhotos) {
+    //             // 跳过无 Prompt 的图
+    //             if (!oldP.prompt) continue;
+                
+    //             const score = this.calculateSimilarity(pair.prompt, oldP.prompt);
+    //             if (score > maxScore) {
+    //                 maxScore = score;
+    //                 bestMatch = oldP;
+    //             }
+    //         }
+
+    //         // 阈值判定: 相似度 > 0.6 视为同一场景，复用图片
+    //         if (maxScore > 0.6 && bestMatch) {
+    //             console.log(`♻️ 复用: 新句[${pair.index}] 与旧句[${bestMatch.origin_pair_index}] 相似度 ${maxScore.toFixed(2)}`);
+    //             nextRoundAiPhotos.push({
+    //                 ...bestMatch, // 继承 URL, file, name
+    //                 index: pair.index, // 更新为新的索引
+    //                 origin_pair_index: pair.index,
+    //                 sentence: pair.sentence, // 更新为新的句子文本
+    //                 prompt: pair.prompt, // 更新为新的 Prompt (以便下轮对比)
+    //                 iterationLabel: bestMatch.iterationLabel + '(Keep)' // 标记复用
+    //             });
+    //         } else {
+    //             console.log(`🆕 新增: 新句[${pair.index}] 无匹配 (MaxScore ${maxScore.toFixed(2)}), 需生成`);
+    //             toGenerate.push(pair);
+    //         }
+    //     });
+
+    //     // 3. 生成不可复用的新图
+    //     if (toGenerate.length > 0) {
+    //       console.log(`[Smart Reuse] 需新生成 ${toGenerate.length} 张图片...`);
+
+    //       // 附加参考图
+    //       const payloadToSend = toGenerate.map(item => ({
+    //           ...item,
+    //           photo: base64Photos 
+    //       }));
+          
+    //       const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
+    //         sentence_pairs: payloadToSend
+    //       }, { timeout: 600000 });
+
+    //       if (genResp.data && genResp.data.results) {
+    //          const results = genResp.data.results;
+             
+    //          results.forEach(res => {
+    //             const pairFromAll = toGenerate.find(p => p.index === res.index);
+    //             const urls = res.generated_urls || [];
+    //             if (!urls.length) return;
+
+    //             let firstUrl = urls[0];
+    //             if (firstUrl.startsWith("/")) {
+    //               firstUrl = BACKEND_BASE + firstUrl;
+    //             } else if (!firstUrl.startsWith("http")) {
+    //               firstUrl = BACKEND_BASE + "/static/generated/" + firstUrl;
+    //             }
+
+    //             nextRoundAiPhotos.push({
+    //               file: null,
+    //               url: firstUrl,
+    //               name: `ai_gen_s4_${Date.now()}_${res.index}.jpg`,
+    //               prompt: res.prompt,
+    //               iterationLabel: `Iter ${this.iterationCount + 1}`,
+    //               sentence: pairFromAll?.sentence || null,
+    //               origin_pair_index: res.index
+    //             });
+    //          });
+    //       }
+    //     }
+
+    //     // 4. 更新状态
+    //     this.iterationCount += 1;
+        
+    //     // 按 index 排序，保证视觉顺序正确
+    //     nextRoundAiPhotos.sort((a,b) => (a.origin_pair_index || 0) - (b.origin_pair_index || 0));
+        
+    //     this.aiPhotos = nextRoundAiPhotos;
+        
+    //     // 重新构建 allPhotos (用于视频生成)
+    //     this.allPhotos = [];
+    //     newSentencePairs.forEach(pair => {
+    //         // 找 AI 图
+    //         const aiP = this.aiPhotos.find(p => p.origin_pair_index === pair.index);
+    //         if (aiP) {
+    //             this.allPhotos.push({
+    //                type: 'ai',
+    //                sourceIndex: pair.index,
+    //                url: aiP.url,
+    //                prompt: aiP.prompt,
+    //                sentence: aiP.sentence
+    //             });
+    //         } else {
+    //             // 找原图 Fallback
+    //             if (this.photos[pair.index]) {
+    //                this.allPhotos.push({
+    //                   type: 'original',
+    //                   sourceIndex: pair.index,
+    //                   url: this.photos[pair.index].url,
+    //                   sentence: pair.sentence
+    //                });
+    //             } else if (this.photos[0]) {
+    //                this.allPhotos.push({
+    //                   type: 'original',
+    //                   sourceIndex: pair.index,
+    //                   url: this.photos[0].url,
+    //                   sentence: pair.sentence
+    //                });
+    //             }
+    //         }
+    //     });
+
+    //     // ✅ 确认文本变更：把 Purple Text 变正文
+    //     this.assistantIntegratedText = narrative;
+    //     this.assistantUpdatedText = ''; 
+    //     this.aiSuggestion = '';
+    //     this.stage4Questions = [];
+    //     this.currentQuestionIndex = 0;
+
+    //     alert(`画面更新完成！复用了 ${nextRoundAiPhotos.length - toGenerate.length} 张，新生成 ${toGenerate.length} 张。`);
+
+    //   } catch (error) {
+    //     console.error("Error in generateNewImagesFromNarrative:", error);
+    //     alert("S4: 根据叙事更新图像时出错，请查看控制台");
+    //   }
+    // },
     async generateNewImagesFromNarrative() {
       console.log('S4: 开始智能更新画面 (复用检测)...');
       
-      // ✅ 获取最新的全量文本
-      const narrative = this.assistantUpdatedText || this.assistantIntegratedText;
-
-      if (!narrative) {
-        alert("AI 叙事为空，请先整合文本");
-        return;
+      // 【核心修改】判断是否在 subgroup 模式
+      let narrative = '';
+      let targetPairs = [];
+      
+      if (this.activeSubgroup) {
+        // ====== 模式 A：只针对当前 subgroup ======
+        const { groupIdx, subgroupIdx } = this.activeSubgroup;
+        
+        // 1. 只筛选该 subgroup 且未生成图的句子
+        targetPairs = this.sentencePairs.filter(p =>
+          p.group_index == groupIdx &&
+          p.subgroup_index == subgroupIdx &&
+          p.prompt === null // 只处理未生成图的
+        );
+        
+        if (targetPairs.length === 0) {
+          alert('该子分组暂无需要生成图像的新文本');
+          return;
+        }
+        
+        // 2. 拼接该 subgroup 的文本（用于生成 prompts）
+        narrative = targetPairs
+          .map(p => p.sentence)
+          .filter(Boolean)
+          .join('\n\n');
+      } else {
+        // ====== 模式 B：全局模式（原有逻辑） ======
+        narrative = this.assistantUpdatedText || this.assistantIntegratedText;
+        if (!narrative) {
+          alert("AI 叙事为空，请先整合文本");
+          return;
+        }
       }
-
+      
       try {
         const base64Photos = await Promise.all(
           this.photos.map(photo => this.convertToBase64(photo.file))
         );
-
+        
         // 1. 获取新故事的分镜 Prompts
         const response = await axios.post('http://127.0.0.1:5000/generate-prompts', {
           photos: base64Photos,
           narrative: narrative,
+          // 【新增】告知后端这是 subgroup 模式
+          subgroup_context: this.activeSubgroup || null
         });
-
-        const newSentencePairs = response.data.sentence_pairs || [];
+        
+        let newSentencePairs = response.data.sentence_pairs || [];
+        
+        // 2. 如果是 subgroup 模式，需要将新生成的 pairs 与原有的关联起来
+        if (this.activeSubgroup && targetPairs.length > 0) {
+          // 将新生成的 prompt 写回到对应的 sentencePairs 中
+          newSentencePairs.forEach((newPair, i) => {
+            const originalPair = targetPairs[i];
+            if (originalPair && newPair.prompt) {
+              originalPair.prompt = newPair.prompt;
+            }
+          });
+          
+          // 只处理需要生成图的 pairs
+          newSentencePairs = newSentencePairs.filter(p => p.prompt);
+        }
+        
         const toGenerate = [];
         const nextRoundAiPhotos = [];
         const BACKEND_BASE = "http://127.0.0.1:5000";
-
-        // 2. 遍历新分镜，尝试复用
+        
+        // 3. 遍历新分镜，尝试复用（原有逻辑保持不变）
         console.log(`[Smart Reuse] 收到 ${newSentencePairs.length} 个新分镜，开始比对...`);
-
         newSentencePairs.forEach(pair => {
-            // Case A: 对应原图 (无需处理，后续构建 allPhotos 会处理)
-            if (!pair.prompt) return; 
-
-            // Case B: 需要 AI 生成 -> 尝试在 aiPhotos 中找相似 Prompt
-            let bestMatch = null;
-            let maxScore = 0;
-
-            for (const oldP of this.aiPhotos) {
-                // 跳过无 Prompt 的图
-                if (!oldP.prompt) continue;
-                
-                const score = this.calculateSimilarity(pair.prompt, oldP.prompt);
-                if (score > maxScore) {
-                    maxScore = score;
-                    bestMatch = oldP;
-                }
+          if (!pair.prompt) return;
+          
+          let bestMatch = null;
+          let maxScore = 0;
+          for (const oldP of this.aiPhotos) {
+            if (!oldP.prompt) continue;
+            const score = this.calculateSimilarity(pair.prompt, oldP.prompt);
+            if (score > maxScore) {
+              maxScore = score;
+              bestMatch = oldP;
             }
-
-            // 阈值判定: 相似度 > 0.6 视为同一场景，复用图片
-            if (maxScore > 0.6 && bestMatch) {
-                console.log(`♻️ 复用: 新句[${pair.index}] 与旧句[${bestMatch.origin_pair_index}] 相似度 ${maxScore.toFixed(2)}`);
-                nextRoundAiPhotos.push({
-                    ...bestMatch, // 继承 URL, file, name
-                    index: pair.index, // 更新为新的索引
-                    origin_pair_index: pair.index,
-                    sentence: pair.sentence, // 更新为新的句子文本
-                    prompt: pair.prompt, // 更新为新的 Prompt (以便下轮对比)
-                    iterationLabel: bestMatch.iterationLabel + '(Keep)' // 标记复用
-                });
-            } else {
-                console.log(`🆕 新增: 新句[${pair.index}] 无匹配 (MaxScore ${maxScore.toFixed(2)}), 需生成`);
-                toGenerate.push(pair);
-            }
+          }
+          
+          if (maxScore > 0.6 && bestMatch) {
+            console.log(`♻️ 复用: 新句[${pair.index}] 与旧句[${bestMatch.origin_pair_index}] 相似度 ${maxScore.toFixed(2)}`);
+            nextRoundAiPhotos.push({
+              ...bestMatch,
+              index: pair.index,
+              origin_pair_index: pair.index,
+              sentence: pair.sentence,
+              prompt: pair.prompt,
+              iterationLabel: bestMatch.iterationLabel + '(Keep)'
+            });
+          } else {
+            console.log(`🆕 新增: 新句[${pair.index}] 无匹配 (MaxScore ${maxScore.toFixed(2)}), 需生成`);
+            toGenerate.push(pair);
+          }
         });
-
-        // 3. 生成不可复用的新图
+        
+        // 4. 生成不可复用的新图（原有逻辑保持不变）
         if (toGenerate.length > 0) {
           console.log(`[Smart Reuse] 需新生成 ${toGenerate.length} 张图片...`);
-
-          // 附加参考图
           const payloadToSend = toGenerate.map(item => ({
-              ...item,
-              photo: base64Photos 
+            ...item,
+            photo: base64Photos
           }));
           
           const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
             sentence_pairs: payloadToSend
           }, { timeout: 600000 });
-
+          
           if (genResp.data && genResp.data.results) {
-             const results = genResp.data.results;
-             
-             results.forEach(res => {
-                const pairFromAll = toGenerate.find(p => p.index === res.index);
-                const urls = res.generated_urls || [];
-                if (!urls.length) return;
-
-                let firstUrl = urls[0];
-                if (firstUrl.startsWith("/")) {
-                  firstUrl = BACKEND_BASE + firstUrl;
-                } else if (!firstUrl.startsWith("http")) {
-                  firstUrl = BACKEND_BASE + "/static/generated/" + firstUrl;
+            const results = genResp.data.results;
+            results.forEach(res => {
+              const pairFromAll = toGenerate.find(p => p.index === res.index);
+              const urls = res.generated_urls || [];
+              if (!urls.length) return;
+              
+              let firstUrl = urls[0];
+              if (firstUrl.startsWith("/")) {
+                firstUrl = BACKEND_BASE + firstUrl;
+              } else if (!firstUrl.startsWith("http")) {
+                firstUrl = BACKEND_BASE + "/static/generated/" + firstUrl;
+              }
+              
+              const aiPhotoObj = {
+                file: null,
+                url: firstUrl,
+                name: `ai_gen_s4_${Date.now()}_${res.index}.jpg`,
+                prompt: res.prompt,
+                iterationLabel: `Iter ${this.iterationCount + 1}`,
+                sentence: pairFromAll?.sentence || null,
+                origin_pair_index: res.index,
+                group_index: pairFromAll?.group_index,
+                subgroup_index: pairFromAll?.subgroup_index
+              };
+              
+              nextRoundAiPhotos.push(aiPhotoObj);
+              
+              // 【新增】同步更新到 photoGroups 中对应的 subgroup
+              if (pairFromAll?.group_index != null && pairFromAll?.subgroup_index != null) {
+                const sg = this.photoGroups[pairFromAll.group_index].subgroups[pairFromAll.subgroup_index];
+                if (!sg.ai_photos) {
+                  this.$set(sg, 'ai_photos', []);
                 }
-
-                nextRoundAiPhotos.push({
-                  file: null,
-                  url: firstUrl,
-                  name: `ai_gen_s4_${Date.now()}_${res.index}.jpg`,
-                  prompt: res.prompt,
-                  iterationLabel: `Iter ${this.iterationCount + 1}`,
-                  sentence: pairFromAll?.sentence || null,
-                  origin_pair_index: res.index
-                });
-             });
+                sg.ai_photos.push(aiPhotoObj);
+              }
+            });
           }
         }
-
-        // 4. 更新状态
+        
+        // 5. 更新状态（原有逻辑保持不变）
         this.iterationCount += 1;
-        
-        // 按 index 排序，保证视觉顺序正确
         nextRoundAiPhotos.sort((a,b) => (a.origin_pair_index || 0) - (b.origin_pair_index || 0));
+        this.aiPhotos = [...this.aiPhotos, ...nextRoundAiPhotos];
         
-        this.aiPhotos = nextRoundAiPhotos;
-        
-        // 重新构建 allPhotos (用于视频生成)
+        // 6. 重新构建 allPhotos（原有逻辑保持不变）
         this.allPhotos = [];
         newSentencePairs.forEach(pair => {
-            // 找 AI 图
-            const aiP = this.aiPhotos.find(p => p.origin_pair_index === pair.index);
-            if (aiP) {
-                this.allPhotos.push({
-                   type: 'ai',
-                   sourceIndex: pair.index,
-                   url: aiP.url,
-                   prompt: aiP.prompt,
-                   sentence: aiP.sentence
-                });
-            } else {
-                // 找原图 Fallback
-                if (this.photos[pair.index]) {
-                   this.allPhotos.push({
-                      type: 'original',
-                      sourceIndex: pair.index,
-                      url: this.photos[pair.index].url,
-                      sentence: pair.sentence
-                   });
-                } else if (this.photos[0]) {
-                   this.allPhotos.push({
-                      type: 'original',
-                      sourceIndex: pair.index,
-                      url: this.photos[0].url,
-                      sentence: pair.sentence
-                   });
-                }
+          const aiP = this.aiPhotos.find(p => p.origin_pair_index === pair.index);
+          if (aiP) {
+            this.allPhotos.push({
+              type: 'ai',
+              sourceIndex: pair.index,
+              url: aiP.url,
+              prompt: aiP.prompt,
+              sentence: aiP.sentence,
+              group_index: pair.group_index ?? null,
+              subgroup_index: pair.subgroup_index ?? null
+            });
+          } else {
+            if (this.photos[pair.index]) {
+              this.allPhotos.push({
+                type: 'original',
+                sourceIndex: pair.index,
+                url: this.photos[pair.index].url,
+                sentence: pair.sentence,
+                group_index: pair.group_index ?? null,
+                subgroup_index: pair.subgroup_index ?? null
+              });
             }
+          }
         });
-
-        // ✅ 确认文本变更：把 Purple Text 变正文
-        this.assistantIntegratedText = narrative;
-        this.assistantUpdatedText = ''; 
-        this.aiSuggestion = '';
-        this.stage4Questions = [];
-        this.currentQuestionIndex = 0;
-
+        
+        // 7. 如果是全局模式，确认文本变更
+        if (!this.activeSubgroup) {
+          this.assistantIntegratedText = narrative;
+          this.assistantUpdatedText = '';
+          this.aiSuggestion = '';
+          this.stage4Questions = [];
+          this.currentQuestionIndex = 0;
+        }
+        
         alert(`画面更新完成！复用了 ${nextRoundAiPhotos.length - toGenerate.length} 张，新生成 ${toGenerate.length} 张。`);
-
       } catch (error) {
         console.error("Error in generateNewImagesFromNarrative:", error);
         alert("S4: 根据叙事更新图像时出错，请查看控制台");
       }
     },
     async submitIndividualPhotoUpdate() {
-      const index = this.suggestionForPhotoIndex;
-      const suggestion = this.currentSuggestionText.trim();
-      if (index === null || !suggestion) return;
+      const ai = this.currentEditingAi
+      const suggestion = this.promptEditBuffer.trim()
+      if (!ai || !suggestion) return
 
-      const photo = this.aiPhotos[index];
-      if (!photo || !photo.prompt) {
-        alert("未找到原始 Prompt，无法更新。");
-        return;
+      // 🔎 找到 ai 所在的 subgroup 和 aiIdx（用于日志 / label / history）
+      let found = false
+      let aiIdx = -1
+      let parentSubgroup = null
+
+      for (const group of this.photoGroupsWithAi) {
+        for (const subgroup of group.subgroups) {
+          const idx = subgroup.ai_photos.indexOf(ai)
+          if (idx !== -1) {
+            aiIdx = idx
+            parentSubgroup = subgroup
+            found = true
+            break
+          }
+        }
+        if (found) break
       }
 
-      console.log(`S4: 开始根据建议 "${suggestion}" 修改照片 ${index}...`);
-      this.isUpdatingPhoto = true;
+      if (!found) {
+        alert("未找到对应的 AI 照片，无法更新")
+        return
+      }
+
+      if (!ai.prompt) {
+        alert("未找到原始 Prompt，无法更新。")
+        return
+      }
+
+      console.log(`S4: 开始根据建议 "${suggestion}" 修改照片 ${aiIdx}...`)
+      this.isUpdatingPhoto = true
 
       try {
-        // ✅ 【关键修复】准备参考图片 base64 字符串数组（带 data:image/... 前缀）
+        // ✅ 保持原逻辑：准备参考图 base64
         const base64Photos = await Promise.all(
           this.photos.slice(0, 4).map(p => this.convertToBase64(p.file))
-        );
+        )
 
-        // ✅ 直接使用用户在弹窗中修改后的完整指令
-        const newPrompt = suggestion;
+        const newPrompt = suggestion
 
-        // ✅ 构造 sentence_pairs：photo 字段必须是 string[]（base64 data URLs）
         const manual_sentence_pairs = [{
           index: 0,
           prompt: newPrompt,
-          photo: base64Photos, // ✅ 直接传字符串数组，后端能正确解析
-        }];
+          photo: base64Photos
+        }]
 
-        const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
-          sentence_pairs: manual_sentence_pairs
-        }, { timeout: 600000 });
+        const genResp = await axios.post(
+          'http://127.0.0.1:5000/generate-images',
+          { sentence_pairs: manual_sentence_pairs },
+          { timeout: 600000 }
+        )
 
         if (!(genResp.data && genResp.data.results && genResp.data.results.length > 0)) {
-          console.error("S4 submitIndividualPhotoUpdate 返回异常：", genResp.data);
-          alert("根据建议更新图片时出错，请查看控制台");
-          return;
+          console.error("S4 submitIndividualPhotoUpdate 返回异常：", genResp.data)
+          alert("根据建议更新图片时出错，请查看控制台")
+          return
         }
 
-        const result = genResp.data.results[0];
-        const urls = result.generated_urls || [];
+        const result = genResp.data.results[0]
+        const urls = result.generated_urls || []
         if (!urls.length) {
-          alert("AI 未能生成图片，请重试");
-          return;
+          alert("AI 未能生成图片，请重试")
+          return
         }
 
-        // ✅ 更新 UI
-        let firstUrl = urls[0];
-        const BACKEND_BASE = "http://127.0.0.1:5000";
+        // ✅ URL 处理逻辑保持不变
+        let firstUrl = urls[0]
+        const BACKEND_BASE = "http://127.0.0.1:5000"
         if (firstUrl.startsWith("/")) {
-          firstUrl = BACKEND_BASE + firstUrl;
+          firstUrl = BACKEND_BASE + firstUrl
         } else if (!firstUrl.startsWith("http://") && !firstUrl.startsWith("https://")) {
-          firstUrl = BACKEND_BASE + "/static/generated/" + firstUrl;
+          firstUrl = BACKEND_BASE + "/static/generated/" + firstUrl
         }
 
-        const updatedAiObj = {
-          ...this.aiPhotos[index],
-          url: firstUrl,
-          prompt: newPrompt,
-          name: `ai_modified_${Date.now()}_${index}.jpg`,
-          iterationLabel: `Manual_${this.iterationCount}`
-          // sentence 保持不变
-        };
+        const oldUrl = ai.url
+        const oldPrompt = ai.prompt
 
-        this.aiPhotos[index] = updatedAiObj;
+        // ✅ 关键变化：直接修改 subgroup.ai_photos[aiIdx]（对象引用）
+        ai.url = firstUrl
+        ai.prompt = newPrompt
+        ai.name = `ai_modified_${Date.now()}_${aiIdx}.jpg`
+        ai.iterationLabel = `Manual_${this.iterationCount}`
 
-        // 同步更新 allPhotos
-        const targetInAll = this.allPhotos.find(p => p.type === 'ai' && p.url === photo.url);
+        // ✅ 同步更新 allPhotos（逻辑保持一致）
+        const targetInAll = this.allPhotos.find(
+          p => p.type === 'ai' && p.url === oldUrl
+        )
         if (targetInAll) {
-          targetInAll.url = updatedAiObj.url;
-          targetInAll.prompt = updatedAiObj.prompt;
-          targetInAll.iterationLabel = updatedAiObj.iterationLabel;
+          targetInAll.url = ai.url
+          targetInAll.prompt = ai.prompt
+          targetInAll.iterationLabel = ai.iterationLabel
         }
 
-        // ✅ 记录修改
+        // ✅ 记录修改（字段保持旧版语义）
         this.stage4Modifications.push({
           time: new Date().toISOString(),
-          photoIndex: index,
-          photoLabel: this.getLetterIndex(index),
-          oldUrl: photo.url,
-          newUrl: updatedAiObj.url,
+          photoIndex: aiIdx,
+          photoLabel: this.getLetterIndex(aiIdx),
+          oldUrl: oldUrl,
+          newUrl: ai.url,
           suggestion: suggestion,
-          oldPrompt: photo.prompt,
+          oldPrompt: oldPrompt,
           newPrompt: newPrompt
-        });
+        })
 
         this.aiPhotosHistory.push({
           timestamp: new Date().toISOString(),
           type: 'manual',
-          photoIndex: index,
-          oldUrl: photo.url,
-          newUrl: updatedAiObj.url,
+          photoIndex: aiIdx,
+          oldUrl: oldUrl,
+          newUrl: ai.url,
           suggestion: suggestion,
           prompt: newPrompt
-        });
+        })
 
-        alert(`照片 ${this.getLetterIndex(index)} 更新完毕！`);
+        alert(`照片 ${this.getLetterIndex(aiIdx)} 更新完毕！`)
       } catch (error) {
-        console.error("Error in submitIndividualPhotoUpdate:", error);
-        alert("S4: 根据建议更新图像时出错，请查看控制台");
+        console.error("Error in submitIndividualPhotoUpdate:", error)
+        alert("S4: 根据建议更新图像时出错，请查看控制台")
       } finally {
-        this.isUpdatingPhoto = false;
-        this.showSuggestionModal = false;
+        this.isUpdatingPhoto = false
+        this.showSuggestionModal = false
       }
     },
-    openSuggestionModal(index) {
-      this.suggestionForPhotoIndex = index;
-      this.currentSuggestionText = this.aiPhotos[index].prompt || '';
-      this.showSuggestionModal = true;
+    openSuggestionModal(ai) {
+      this.currentEditingAi = ai   // 直接保存对象引用
+
+      this.promptEditBuffer = ai.prompt || ''
+      this.showSuggestionModal = true
     },
+    deleteAiPhoto(subgroup, aiIdx) {
+      const ai = subgroup.ai_photos[aiIdx]
+      if (!ai) return
+
+      if (!confirm(`确定要删除这张 AI 生成的照片 ${this.getLetterIndex(aiIdx)} 吗？`)) {
+        return
+      }
+
+      const deletedUrl = ai.url
+
+      // 1️⃣ 从当前 subgroup 中删除（这是 UI 的唯一数据源）
+      subgroup.ai_photos.splice(aiIdx, 1)
+
+      // 2️⃣ 同步从 allPhotos 中删除（影响 Stage 5 / 视频）
+      if (this.allPhotos && this.allPhotos.length > 0) {
+        this.allPhotos = this.allPhotos.filter(
+          p => !(p.type === 'ai' && p.url === deletedUrl)
+        )
+      }
+
+      // 3️⃣ （可选）记录日志
+      console.log(`已删除 AI 照片 ${this.getLetterIndex(aiIdx)}`)
+    },
+
     startResizeAiResult(e) {
       this.isResizingAiResult = true;
       this.startY_ai = e.clientY;
@@ -2568,32 +3230,27 @@ export default {
       document.removeEventListener('mousemove', this.doResizeAiResult);
       document.removeEventListener('mouseup', this.stopResizeAiResult);
     },
-    stopIteration() {
-      this.iterationStopped = true;
-      console.log("用户终止迭代");
+    finishSubgroupReview() {
+      if (!this.activeSubgroup) return;
+
+      this.activeSubgroup.stage4.status = 'done';
+      this.activeSubgroup.stage4.finishedAt = Date.now();
+
+      // 清空 Stage 4 右侧状态
+      this.stage4Questions = [];
+      this.stage4QA = []; 
+      this.currentQuestionIndex = null;
+
+      // 不再显示“新增内容生成图像”按钮
+      // 但已经生成过的 AI 图保留在 subgroup 中
+
+      // 取消选中，让用户回到 timeline
+      this.activeSubgroup = null;
+
+      console.log("subgroup 回忆完成");
     },
     getLetterIndex(idx) {
       return String.fromCharCode(97 + idx);
-    },
-    deleteAiPhoto(idx) {
-      // 1. 弹出确认框，防止误删
-      if (confirm(`确定要删除这张 AI 生成的照片 ${this.getLetterIndex(idx)} 吗？`)) {
-        
-        // 获取要删除的照片对象，方便后面在 allPhotos 中比对
-        const photoToDelete = this.aiPhotos[idx];
-
-        // 2. 从 aiPhotos 数组中删除 (影响当前页面展示)
-        // splice 会从索引 idx 开始删除 1 个元素
-        this.aiPhotos.splice(idx, 1);
-
-        // 3. 从 allPhotos 数组中同步删除 (影响 Stage 5 视频生成)
-        // 我们过滤掉 url 相同的项，确保生成的视频序列里不再有这张图
-        if (this.allPhotos && this.allPhotos.length > 0) {
-          this.allPhotos = this.allPhotos.filter(p => p.url !== photoToDelete.url);
-        }
-
-        console.log(`已成功删除照片 ${this.getLetterIndex(idx)}，并同步更新了视频序列数据。`);
-      }
     },
 
 
@@ -3181,16 +3838,18 @@ async generateAiVideo() {
   gap: 12px;
   justify-content: center;
   margin-bottom: 12px;
-  flex-wrap: wrap; /* ✅ [新增] 允许换行 */
+  flex-wrap: wrap;
+  overflow: visible;
 }
 
 .photo-slot {
   width: 80px; /* 可调，建议 80-100px */
-  height: 80px;
+  height: auto;
+  overflow: visible;
   display: flex;
+  flex-direction: column; 
   align-items: center;
   justify-content: center;
-  overflow: hidden;
   border-radius: 4px;
   background: #f5f6f7;
   position: relative;
@@ -3209,14 +3868,6 @@ async generateAiVideo() {
   transform: scale(1.05);
 }
 
-/* ✅ [新增] AI 照片槽位 */
-.photo-slot-ai {
-  width: 120px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px; /* 按钮和图片的间距 */
-  align-items: center;
-}
 .edit-photo-btn {
   width: 100%;
   padding: 4px;
@@ -3235,10 +3886,9 @@ async generateAiVideo() {
   cursor: not-allowed;
 }
 
-
 .photo-placeholder {
   width: 100%;
-  height: 120px; /* ✅ [修改] 固定高度 */
+  height: 80px; /* ✅ [修改] 固定高度 */
   background: #f5f6f7;
   border: 2px dashed #d0d0d0;
   border-radius: 8px;
@@ -3902,6 +4552,8 @@ async generateAiVideo() {
   border-radius: 8px;
   padding: 12px;
   min-width: 220px;
+  flex-wrap: wrap;
+  overflow: visible;
 }
 
 
@@ -3915,6 +4567,7 @@ async generateAiVideo() {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow-y: auto;
 }
 
 .subgroup-box {
@@ -3922,7 +4575,32 @@ async generateAiVideo() {
   border-radius: 6px;
   padding: 8px;
   background: #fafafa;
+  flex-wrap: wrap;
+  overflow: visible;
 }
+
+.subgroup-box.active {
+  border: 2px solid #4a90e2;
+}
+
+.subgroup-box.reviewing::before {
+  content: "● 回顾中";
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  font-size: 11px;
+  color: #ff9800;
+}
+
+.subgroup-box.reviewed::after {
+  content: "✓ 已回顾";
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 11px;
+  color: #4caf50;
+}
+
 
 .subgroup-title {
   font-weight: 600;
@@ -3988,5 +4666,104 @@ async generateAiVideo() {
   background: #f3f3f3;
   border-left: 4px solid #999;
 }
+
+/* AI照片角标 */
+.ai-photo-label {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(124, 131, 185, 0.8);
+  color: white;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+  z-index: 2;
+}
+
+/* 迭代标签样式 */
+.ai-photo-iter-label {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 10px;
+  font-weight: bold;
+  z-index: 2;
+}
+
+.ai-photo-controls {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  width: 100%;
+  justify-content: center;
+}
+
+.ai-photo-controls .edit-photo-btn {
+  font-size: 12px;
+  padding: 4px 6px;
+}
+/* ================= 图片预览模态框 ================= */
+.image-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 2000;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.image-preview-modal {
+  position: relative;
+  max-width: 80vw;
+  max-height: 80vh;
+  background: white;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.image-preview-large {
+  max-width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+  display: block;
+}
+
+/* 关闭按钮 */
+.image-preview-modal .close-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  border: none;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.image-preview-modal .close-btn:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+/* 鼠标提示 */
+.photo-preview {
+  cursor: zoom-in;
+}
+
+
 
 </style>
