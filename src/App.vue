@@ -2147,9 +2147,6 @@ export default {
     // ✅ [Priority 1] 第二步：用户确认后，真正调用生图
     // 💡 【核心修改】接受 toGenerate 参数，否则使用 this.pendingSentencePairs (兼容Stage4的手动更新)
     async confirmGenerateImages(passedToGenerate) { 
-      /* // 【原 Prompt 确认流程 - 已注释】
-      this.showPromptModal = false; // 关闭弹窗
-      */
       
       const toGenerate = passedToGenerate || this.pendingSentencePairs; 
       if (!toGenerate.length) {
