@@ -298,8 +298,8 @@ class MultiImage2Image:
         if not headers:
             raise ValueError("headers 不能为空，请提供包含 Authorization 的请求头")
 
-        if len(subject_imgs) < 2 or len(subject_imgs) > 4:
-            raise ValueError("subject_imgs 必须包含 2 到 4 张图片")
+        if len(subject_imgs) < 1 or len(subject_imgs) > 4:
+            raise ValueError("subject_imgs 必须包含 1 到 4 张图片")
 
         # 处理主体图片
         subject_image_list = [

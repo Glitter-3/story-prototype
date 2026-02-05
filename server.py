@@ -748,189 +748,6 @@ def integrate_text():
         return jsonify({"error": str(e)}), 500
 
 
-# @app.route('/generate-prompts', methods=['POST'])
-# def generate_prompts():
-#     """
-#     Stage 3 & 4: 分句与 Prompt 生成
-#     """
-#     try:
-#         data = request.get_json()
-#         photos = data.get('photos', [])
-#         narratives = data.get('narrative', '')
-#         subgroup_summaries = data.get('subgroup_summaries', {})
-
-#         system_prompt_1 = """
-#         你是一个叙事视觉设计助手。任务：将文本转化为分镜式 Prompt 序列。
-
-#         【核心规则：视觉场景合并 (Visual Scene Merging)】
-#         1. **必须合并**：连续的句子如果描述的是同一个静止画面、同一个动作的持续状态、或者对同一场景的细节/心理补充，**必须合并为一个 Prompt**。
-#            - 例子："我坐在船头。" + "风吹过我的头发。" + "心情很舒畅。" -> 合并为一句。
-#         2. **切分条件**：只有当发生以下情况时才开启新 Prompt：
-#            - 明确的时间跳跃。
-#            - 地点的物理转换。
-#            - 视觉主体的根本改变。
-        
-#         【Prompt 规范】
-#         - 包含：主体、动作、环境（含时代/地域特征）、光影氛围。
-#         - 约 20 字。
-#         - 必须具体可画，避免抽象形容词。
-        
-#         【输出格式】
-#         JSON 数组：[{"sentence": "合并后的原句片段", "prompt": "画面描述"}]
-#         注意："sentence" 字段应当包含该画面对应的所有原文句子，以便后续追踪。
-#         """
-#         system_prompt_2 = """
-#         你是一个记忆结构对齐助手。
-
-#         任务：
-#         将“叙事分镜句子”映射到最合适的事件子分组（subgroup）。
-
-#         已知信息：
-#         - 用户已经在 Stage 2 中，人工整理了事件子分组（subgroup）
-#         - 每个 subgroup 描述的是一个明确的事件 / 场景 / 时间段
-#         - 下面提供的 sentence，是整合叙事后拆分出的画面级描述
-
-#         规则：
-#         1. 每个 sentence **必须且只能**归属到一个 subgroup
-#         2. 归属依据是：事件一致性、时间、人物、地点、行为
-#         3. 不要创建新 subgroup，只能从给定列表中选择
-#         4. 如果多个 subgroup 都可能，选择“最具体、最贴近”的那个
-
-#         输出格式（严格 JSON）：
-#         [
-#         {
-#             "sentence_index": 0,
-#             "group_index": gIdx,
-#             "subgroup_index": sgIdx
-#         }
-#         ]
-#         """
-
-#         subgroup_desc = []
-#         for gIdx, subgroups in subgroup_summaries.items():
-#             for sgIdx, sg in subgroups.items():
-#                 data = sg.get("data", {})
-#                 subgroup_desc.append({
-#                     "group_index": gIdx,
-#                     "subgroup_index": sgIdx,
-#                     "who": data.get("who"),
-#                     "when": data.get("when"),
-#                     "where": data.get("where"),
-#                     "what": data.get("what"),
-#                     "emotion": data.get("emotion")
-#                 })
-
-#         prompt_1 = f"文本内容：\n{narratives}\n请生成分镜 JSON。"
-
-#         response_1 = qwen.get_response(
-#             prompt=prompt_1,
-#             system_prompt=system_prompt_1,
-#             model="qwen-vl-max",
-#             enable_image_input=False
-#         )
-
-#         try:
-#             text_output = response_1 if isinstance(response_1, str) else response_1.get("output", {}).get("text", "")
-#             match = re.search(r'\[.*\]', text_output, re.DOTALL)
-#             qwen_sentences = json.loads(match.group(0)) if match else []
-#         except:
-#             print("Prompt生成JSON解析失败，降级处理")
-#             qwen_sentences = [{"sentence": narratives, "prompt": narratives}]
-
-#         # ===== 新增 ①：构造 align_prompt 并请求对齐 =====
-#         align_prompt = f"""
-#         【事件子分组列表】
-#         {subgroup_desc}
-
-#         【叙事分镜句子】
-#         {[{"index": i, "sentence": s["sentence"]} for i, s in enumerate(qwen_sentences)]}
-
-#         请完成 sentence 到 subgroup 的映射：
-#         """
-
-#         align_resp = qwen.get_response(
-#             prompt=align_prompt,
-#             system_prompt=system_prompt_2,
-#             model="qwen-vl-max",
-#             enable_image_input=False
-#         )
-
-#         try:
-#             align_json = json.loads(
-#                 re.search(r'\[.*\]', str(align_resp), re.DOTALL).group(0)
-#             )
-#         except:
-#             align_json = []
-
-#         sentence_to_subgroup = {
-#             item["sentence_index"]: (item["group_index"], item["subgroup_index"])
-#             for item in align_json
-#         }
-#         # ===== 新增结束 =====
-
-#         # Photo-Sentence Matching
-#         sentence_pairs = []
-#         matched_indices = set()
-
-#         if photos:
-#             for photo_idx, photo in enumerate(photos):
-#                 all_sents = "\n".join(
-#                     [f"{i}. {item['sentence'][:30]}..." for i, item in enumerate(qwen_sentences)]
-#                 )
-#                 match_prompt = f"图片与以下哪个片段最匹配？返回索引JSON [{{'index': i, 'score': s}}]\n{all_sents}"
-
-#                 try:
-#                     match_res = qwen.get_response(
-#                         prompt=match_prompt,
-#                         image_path_list=[photo],
-#                         model="qwen-vl-max",
-#                         enable_image_input=True
-#                     )
-#                     match_json = re.search(r'\[.*\]', str(match_res), re.DOTALL)
-#                     scores = json.loads(match_json.group(0)) if match_json else []
-
-#                     if scores:
-#                         best = max(scores, key=lambda x: x.get('score', 0))
-#                         best_idx = best.get('index', -1)
-#                         if best.get('score', 0) > 60 and best_idx not in matched_indices and 0 <= best_idx < len(qwen_sentences):
-#                             matched_indices.add(best_idx)
-#                             sentence_pairs.append({
-#                                 "index": best_idx,
-#                                 "photo": photo,
-#                                 "sentence": qwen_sentences[best_idx]["sentence"],
-#                                 "prompt": None
-#                             })
-#                             continue
-#                 except Exception as e:
-#                     print(f"Photo matching error: {e}")
-
-#                 sentence_pairs.append({
-#                     "index": photo_idx + 1000,
-#                     "photo": photo,
-#                     "sentence": None,
-#                     "prompt": None
-#                 })
-
-#         # ===== 新增 ②：在补全文本 sentence 时注入 group / subgroup =====
-#         for idx, item in enumerate(qwen_sentences):
-#             if idx not in matched_indices:
-#                 gIdx, sgIdx = sentence_to_subgroup.get(idx, (None, None))
-#                 sentence_pairs.append({
-#                     "index": idx,
-#                     "photo": None,
-#                     "sentence": item["sentence"],
-#                     "prompt": item["prompt"],
-#                     "group_index": gIdx,
-#                     "subgroup_index": sgIdx
-#                 })
-#         # ===== 新增结束 =====
-
-#         sentence_pairs.sort(key=lambda x: x['index'])
-#         return jsonify({"sentence_pairs": sentence_pairs})
-
-#     except Exception as e:
-#         print("generate-prompts error:", e)
-#         return jsonify({"error": str(e)}), 500
 @app.route('/generate-prompts', methods=['POST'])
 def generate_prompts():
     """
@@ -1155,11 +972,10 @@ def generate_images():
         if not pairs:
             return jsonify({"error": "no sentence_pairs"}), 400
 
-        # === 初始化两种生成器 ===
-        single_ig = ImageGenerator()
+        # === 初始化生成器 ===
         multi_ig = MultiImage2Image()
+        token = multi_ig._encode_jwt_token()
 
-        token = single_ig._encode_jwt_token()
         HEADERS = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {token}"
@@ -1206,77 +1022,39 @@ def generate_images():
             try:
                 generated_urls = []
 
-                # ============================================================
-                # 🔵 情况一：单张参考图 → ImageGenerator
-                # ============================================================
-                if len(proc_photos) == 1:
-                    local_image_path = base64_to_file(proc_photos[0])
+                # 构造 subject_image_list（1–4 张都合法）
+                subject_imgs = [
+                    {"subject_image": extract_base64(img)}
+                    for img in proc_photos
+                ]
 
-                    task_result = single_ig.run(
-                        headers=HEADERS,
-                        prompt=prompt,
-                        image_path=local_image_path,
-                        model_name="kling-v2",
-                        n=1,
-                        aspect_ratio="3:4",
-                        max_wait=300,
-                        interval=5
-                    )
+                # 不用 style_image 
 
-                    imgs = (
-                        task_result
-                        .get("data", {})
-                        .get("task_result", {})
-                        .get("images", [])
-                        or []
-                    )
+                task_result = multi_ig.run(
+                    subject_imgs=subject_imgs,
+                    headers=HEADERS,
+                    prompt=prompt,
+                    model_name="kling-v2",
+                    n=1,
+                    aspect_ratio="3:4",
+                    max_wait=300,
+                    interval=5
+                )
 
-                    for im in imgs:
-                        remote_url = im.get("url")
-                        if remote_url:
-                            local_url = download_to_generated(remote_url)
-                            if local_url:
-                                generated_urls.append(local_url)
+                imgs = (
+                    task_result
+                    .get("data", {})
+                    .get("task_result", {})
+                    .get("images", [])
+                    or []
+                )
 
-                # ============================================================
-                # 🔵 情况二：多张参考图 → MultiImage2Image
-                # ============================================================
-                else:
-                    # 至少 2 张，最多 4 张（接口要求）
-                    subject_imgs = [
-                        {"subject_image": extract_base64(img)}
-                        for img in proc_photos
-                    ]
-
-                    # 第一张作为 style_image（经验性做法）
-                    style_img = extract_base64(proc_photos[0])
-
-                    task_result = multi_ig.run(
-                        subject_imgs=subject_imgs,
-                        headers=HEADERS,
-                        prompt=prompt,
-                        style_img=style_img,
-                        model_name="kling-v2",
-                        n=1,
-                        aspect_ratio="3:4",
-                        max_wait=300,
-                        interval=5
-                    )
-
-                    imgs = (
-                        task_result
-                        .get("data", {})
-                        .get("task_result", {})
-                        .get("images", [])
-                        or []
-                    )
-
-                    for im in imgs:
-                        remote_url = im.get("url")
-                        if remote_url:
-                            local_url = download_to_generated(remote_url)
-                            if local_url:
-                                generated_urls.append(local_url)
+                for im in imgs:
+                    remote_url = im.get("url")
+                    if remote_url:
+                        local_url = download_to_generated(remote_url)
+                        if local_url:
+                            generated_urls.append(local_url)
 
                 return {
                     "index": idx,
