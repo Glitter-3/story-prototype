@@ -21,6 +21,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional, List  
 from qwenVLLM import analyze_images
+from deepface import DeepFace
+from sklearn.cluster import DBSCAN
+import numpy as np
+import cv2
 
 app = Flask(__name__)
 CORS(app,
@@ -182,9 +186,72 @@ def upload_photo():
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 
-import tempfile
-import shutil
+# --- 新增：人脸识别与聚类接口 ---
+@app.route('/analyze-characters', methods=['POST'])
+def analyze_characters():
+    try:
+        data = request.get_json()
+        photo_urls = data.get('photos', [])
+        
+        characters = []
+        global_face_idx = 0 # 用于给每一张脸分配独立 ID
+        
+        for p_idx, url in enumerate(photo_urls):
+            local_path = _resolve_local_path(url)
+            if not local_path or not local_path.exists(): continue
+            
+            try:
+                # 1. 识别图片中所有人脸
+                results = DeepFace.represent(img_path=str(local_path), 
+                                           model_name="Facenet512", 
+                                           detector_backend='retinaface',
+                                           enforce_detection=False,
+                                           align=True)
+                
+                img = cv2.imread(str(local_path))
+                h, w, _ = img.shape
+                
+                # --- server.py 中的 analyze_characters 函数内部循环修改 ---
+                for res in results:
+                    img = cv2.imread(str(local_path))
+                    if img is None: continue
+                    h, w, _ = img.shape
+                    region = res['facial_area']
+                    
+                    # 🚩 还原为精准的人脸剪裁（不再增加 20% Padding）
+                    y1, y2 = region['y'], region['y'] + region['h']
+                    x1, x2 = region['x'], region['x'] + region['w']
+                    
+                    # 确保坐标在图像范围内
+                    y1, y2 = max(0, y1), min(h, y2)
+                    x1, x2 = max(0, x1), min(w, x2)
+                    
+                    face_img = img[y1:y2, x1:x2]
+                    
+                    if face_img.size > 0:
+                        _, buffer = cv2.imencode('.jpg', face_img)
+                        face_b64 = base64.b64encode(buffer).decode('utf-8')
+                        
+                        characters.append({
+                            "id": global_face_idx,
+                            "name": f"人物 {global_face_idx}",
+                            "relation": "", 
+                            "isMain": False,
+                            "avatar": f"data:image/jpeg;base64,{face_b64}",
+                            "photo_indices": [p_idx]
+                        })
+                        global_face_idx += 1
+                    
+            except Exception as e:
+                print(f"处理照片 {url} 出错: {e}")
+                continue
 
+        return jsonify({"characters": characters})
+
+    except Exception as e:
+        print(f"analyze-characters 总体出错: {e}")
+        return jsonify({"error": str(e)}), 500
+    
 @app.route('/group-photos-by-time', methods=['POST'])
 def group_photos_by_time():
     """

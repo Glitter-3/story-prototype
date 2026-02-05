@@ -35,6 +35,7 @@
 
     <div class="main-content">
       <section class="content-area" ref="contentArea">
+        <div v-if="currentStage === 1" class="stage1-main-layout" style="display: flex; gap: 20px; flex: 1; min-height: 0;">
         <div v-if="currentStage !== 2" class="photo-panel" :class="{ collapsed: isPhotoPanelCollapsed }">
           <div class="panel-header">
             <h2>📷 照片面板</h2>
@@ -49,6 +50,17 @@
               />
               <button button v-if="currentStage === 1" class="control-btn" @click="addPhoto">➕ 添加照片</button>
               <button button v-if="currentStage === 1" class="control-btn" @click="confirmUpload">确认上传图片</button>
+
+              <button 
+                v-if="currentStage === 1" 
+                class="control-btn" 
+                @click="identifyCharacters" 
+                :disabled="photos.length === 0 || isAnalyzingCharacters"
+                style="background: #f0f2f8; border-color: #7c83b9; color: #7c83b9;"
+              >
+                {{ isAnalyzingCharacters ? '正在识别...' : '👤 角色识别' }}
+              </button>
+
               <button v-if="currentStage === 1" class="control-btn" @click="groupPhotosByTime" :disabled="photos.length === 0 || groupingInProgress">
                 {{ groupingInProgress ? '分组中…' : '照片分组' }}
               </button>
@@ -572,6 +584,75 @@
         </div>
 
 
+        <aside class="character-sidebar" :class="{ collapsed: isCharacterPanelCollapsed }" style="width: 300px; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); display: flex; flex-direction: column; flex-shrink: 0;">
+          <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 style="font-size: 16px; color: #333;">👥 角色面板</h3>
+            <button class="control-btn" @click="isCharacterPanelCollapsed = !isCharacterPanelCollapsed">
+              {{ isCharacterPanelCollapsed ? '展开' : '收起' }}
+            </button>
+          </div>
+          
+          <div v-show="!isCharacterPanelCollapsed" class="character-content" style="flex: 1; overflow-y: auto;">
+            <div class="character-list">
+              <div 
+                v-for="char in characters" 
+                :key="char.id" 
+                @click="selectedCharacterId = char.id"
+                style="display: flex; align-items: center; gap: 12px; padding: 10px; border: 1px solid #eee; border-radius: 8px; margin-bottom: 10px; cursor: pointer;"
+                :style="selectedCharacterId === char.id ? 'border-color: #7c83b9; background: #f0f2f8;' : ''"
+              >
+                <img :src="char.avatar" style="width: 45px; height: 45px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" />
+                
+                <div style="flex: 1; min-width: 0;">
+                  <strong style="font-size: 14px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    {{ char.name || '未命名' }}
+                  </strong>
+                  
+                  <span 
+                    v-if="shouldShowTag(char)"
+                    style="font-size: 11px; background: #e8ebf7; color: #7c83b9; padding: 2px 8px; border-radius: 10px; margin-top: 4px; display: inline-block;"
+                  >
+                    {{ char.relationType === '其他' ? char.customRelation : char.relationType }}
+                  </span>
+                </div>
+                <span v-if="char.isMain" style="font-size: 16px;">⭐</span>
+              </div>
+            </div>
+
+            <div v-if="activeCharacter" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee;">
+              <div style="margin-bottom: 12px;">
+                <label style="font-size: 12px; color: #666; display: block; margin-bottom: 4px;">人物</label>
+                <input v-model="activeCharacter.name" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" />
+              </div>
+
+              <div style="margin-bottom: 12px;">
+                <label style="font-size: 12px; color: #666; display: block; margin-bottom: 4px;">与主角关系</label>
+                <select v-model="activeCharacter.relationType" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 8px;">
+                  <option value="" disabled>-- 请选择关系 --</option>
+                  <option value="自己">自己</option>
+                  <option value="家人">家人</option>
+                  <option value="朋友">朋友</option>
+                  <option value="同事">同事</option>
+                  <option value="其他">其他...</option>
+                </select>
+                
+                <input 
+                  v-if="activeCharacter.relationType === '其他'" 
+                  v-model="activeCharacter.customRelation" 
+                  placeholder="请填写具体关系" 
+                  style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" 
+                />
+              </div>
+
+              <label style="font-size: 13px; display: flex; align-items: center; gap: 8px; cursor: pointer; color: #333;">
+                <input type="checkbox" v-model="activeCharacter.isMain" /> 设定为故事主角
+              </label>
+            </div>
+          </div>
+        </aside>
+      </div> 
+
+
         <div 
           v-if="currentStage !== 2"
           class="resize-handle" 
@@ -1052,6 +1133,22 @@ export default {
       photos: [],
       aiPhotos: [],
       allPhotos: [],
+      // --- 新增jue字段 ---
+      characters: [
+        /* 初始空，等后端返回或手动添加 */
+        /* 结构示例: 
+        { 
+          id: 1, 
+          name: "用户 A", 
+          relation: "自己", 
+          isMain: true, 
+          avatar: "path_to_face", 
+          photo_indices: [0, 1] 
+        } 
+        */
+      ],
+      selectedCharacterId: null, // 当前选中的角色 ID
+      isCharacterPanelCollapsed: false, // 角色面板折叠状态
       uploadTargetIndex: null,
       userNarratives: { 1: '', 2: '', 3: '', 4: '', 5: '' },
       currentQuestionIndex: 0,
@@ -1075,6 +1172,7 @@ export default {
       photoGroups: [], // 保存分组结果
       showGroups: false,  
       groupingInProgress: false,
+      isAnalyzingCharacters: false, // 识别角色
       isPhotoPanelCollapsed: false,
       isNarrativeCollapsed: false,
       imagePreview: {
@@ -1102,6 +1200,9 @@ export default {
     }
   },
   computed: {
+    activeCharacter() {
+      return this.characters.find(c => c.id === this.selectedCharacterId);
+    },
     // 筛选当前 activeSubgroup 的 sentencePairs
     filteredSentencePairs() {
       if (!this.activeSubgroup) return [];
@@ -1217,6 +1318,15 @@ export default {
     console.log(`[Log] Session started: ${this.sessionId}`);
   },
   methods: {
+    shouldShowTag(char) {
+      // 1. 如果没选关系，不显示
+      if (!char.relationType) return false;
+      // 2. 如果选了“其他”，但还没填具体内容，不显示
+      if (char.relationType === '其他' && !char.customRelation) return false;
+      // 3. 其他情况（选了自己、家人等）正常显示
+      return true;
+    },
+
     // ✅ [修改 C.5] 新增正则转义辅助函数
     // 【新增】正则转义辅助函数
     escapeRegExp(string) {
@@ -1937,13 +2047,44 @@ export default {
       this.uploadTargetIndex = index;
       this.$refs.fileInput.click();
     },
-    confirmUpload() {
-      if (this.photos.every(photo => !photo.file)) {
-        alert("请先选择图片！");
+
+    // 上传照片后识别人物
+    async confirmUpload() {
+      // 1. 检查是否有图片
+      if (this.photos.length === 0) {
+        alert("请先添加并确认上传图片！");
         return;
       }
-      console.log("准备上传的图片：", this.photos.map(p => p.name));
+      
+      console.log("正在启动 AI 人物识别与聚类...");
+      
+      try {
+        // 2. 提取所有已上传照片的后端 URL 路径
+        const urls = this.photos.map(p => p.url);
+        
+        // 3. 调用后端刚刚写好的 analyze-characters 接口
+        const resp = await axios.post('http://127.0.0.1:5000/analyze-characters', {
+          photos: urls
+        });
+        
+        // 4. 将识别结果注入角色面板
+        if (resp.data.characters) {
+          this.characters = resp.data.characters;
+          
+          // 如果识别到了人，默认选中第一个角色进行展示
+          if (this.characters.length > 0) {
+            this.selectedCharacterId = this.characters[0].id;
+          }
+          alert(`人物识别完成！共发现 ${this.characters.length} 个角色。`);
+        } else {
+          alert("未能识别到清晰的人物面部。");
+        }
+      } catch (err) {
+        console.error("角色分析请求失败:", err);
+        alert("人物识别服务异常，请检查后端 Python 终端报错信息。");
+      }
     },
+
     async uploadPhoto(file) {
       const formData = new FormData();
       formData.append('photo', file);
@@ -1986,6 +2127,44 @@ export default {
       console.log('已上传图片：', file.name, '→', uploadedUrl);
       event.target.value = '';
     },
+
+    async identifyCharacters() {
+      if (this.photos.length === 0) {
+        alert("请先添加并确认上传图片！");
+        return;
+      }
+      
+      this.isAnalyzingCharacters = true;
+      
+      try {
+        const urls = this.photos.map(p => p.url);
+        const resp = await axios.post('http://127.0.0.1:5000/analyze-characters', {
+          photos: urls
+        });
+        
+        if (resp.data.characters) {
+          // 🚩 适配逻辑：为每个角色初始化 relationType 字段
+          this.characters = resp.data.characters.map(char => ({
+            ...char,
+            relationType: "", // 默认为空
+            customRelation: ""    // 初始自定义内容为空
+          }));
+
+          if (this.characters.length > 0) {
+            this.selectedCharacterId = this.characters[0].id;
+          }
+          alert(`识别完成！共发现 ${this.characters.length} 处人物面部。`);
+        } else {
+          alert("未能识别到清晰的人物面部。");
+        }
+      } catch (err) {
+        console.error("角色分析失败:", err);
+        alert("识别服务连接失败，请检查后端运行状态。");
+      } finally {
+        this.isAnalyzingCharacters = false;
+      }
+    },
+
     doResize(e) {
       if (!this.isResizing) return;
       const diff = e.clientY - this.startY;
