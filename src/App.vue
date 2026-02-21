@@ -38,7 +38,7 @@
         
         <!-- ==================== Stage 1: 照片上传和分组 ==================== -->
         <div v-if="currentStage === 1" class="stage1-layout" style="display: flex; flex-direction: column; height: 100%;">
-          <div class="photo-panel" :class="{ collapsed: isPhotoPanelCollapsed }" :style="{ height: photoPanelHeight + 'px', flexShrink: 0 }">
+          <div class="photo-panel" :class="{ collapsed: isPhotoPanelCollapsed }" :style="{ height: photoPanelHeight + 'px', flex: '0 0 ' + photoPanelHeight + 'px' }">
             <div class="panel-header">
               <h2>📷 照片面板</h2>
               <div class="panel-controls">
@@ -199,8 +199,8 @@
         </div>
 
         <!-- ==================== Stage 2: 记忆总结和问答 ==================== -->
-        <div v-if="currentStage === 2" class="stage2-layout" style="display: flex; flex-direction: column; height: 100%;">
-          <div class="photo-panel" :class="{ collapsed: isPhotoPanelCollapsed }" :style="{ height: photoPanelHeight + 'px', flexShrink: 0, overflowY: 'auto' }">
+        <div v-if="currentStage === 2" class="stage2-layout" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+          <div class="photo-panel" :class="{ collapsed: isPhotoPanelCollapsed }" style="flex: 1; min-height: 0; overflow-y: auto;">
             <div class="panel-header">
               <h2>📷 照片面板</h2>
               <div class="panel-controls">
@@ -385,15 +385,13 @@
             </div>
           </div>
 
-          <div class="resize-handle" @mousedown="startResize" :class="{ 'resizing': isResizing }">
-            <div class="handle-line"></div>
-          </div>
+          <!-- Stage2 不需要 resize-handle，照片面板直接填满 -->
 
         </div>
 
         <!-- ==================== Stage 3: AI图像生成 ==================== -->
-        <div v-if="currentStage === 3" class="stage3-layout" style="display: flex; flex-direction: column; height: 100%;">
-          <div class="photo-panel" :class="{ collapsed: isPhotoPanelCollapsed }" :style="{ height: photoPanelHeight + 'px', flexShrink: 0, overflowY: 'auto' }">
+        <div v-if="currentStage === 3" class="stage3-layout" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+          <div class="photo-panel" :class="{ collapsed: isPhotoPanelCollapsed }" style="flex: 1; min-height: 0; overflow-y: auto;">
             <div class="panel-header">
               <h2>📷 照片面板</h2>
               <div class="panel-controls">
@@ -411,95 +409,94 @@
             
             <div class="photo-panel-content" v-show="!isPhotoPanelCollapsed">
               <div class="group-section">
-                <div class="timeline horizontal">
+                <div class="timeline vertical">
                   <div
                     v-for="(group, gIdx) in photoGroupsWithAi"
                     :key="gIdx"
-                    class="timeline-node"
+                    class="timeline-node-vertical"
                   >
-                    <div class="group-card">
-                      <div class="group-title">
-                        {{ group.name }}
-                      </div>
-                      <div class="subgroup-list">
-                        <div
-                          v-for="(subgroup, sgIdx) in group.subgroups"
-                          :key="sgIdx"
-                          class="subgroup-box"
-                          :class="{
-                            active: isActiveSubgroup(gIdx, sgIdx),
-                            reviewing: isActiveSubgroup(gIdx, sgIdx) && subgroup.stage4?.status === 'reviewing',
-                            reviewed: subgroup.stage4?.status === 'done'
-                          }"
-                          @click="selectSubgroup(gIdx, sgIdx)"
-                        >
-                          <div class="subgroup-title">
-                            {{ subgroup.name }}
-                          </div>
-                          <div class="photo-grid">
-                            <!-- 原始照片 -->
-                            <div
-                              class="photo-slot"
-                              v-for="idx in subgroup.photo_indices"
-                              :key="idx"
-                            >
-                              <div class="photo-placeholder">
-                                <template v-if="photos[idx]?.url">
-                                  <img
-                                    :src="photos[idx].url"
-                                    class="photo-preview"
-                                    alt="预览图片"
-                                    @click="openImagePreview(photos[idx]?.url)"
-                                  />
-                                </template>
-                                <template v-else>
-                                  <span class="photo-number">{{ idx + 1 }}</span>
-                                  <span class="add-icon">+</span>
-                                </template>
-                              </div>
+                    <!-- 时间节点标题 -->
+                    <div class="group-node-vertical">
+                      <div class="group-title">{{ group.name }}</div>
+                    </div>
+
+                    <!-- 子分组列表 -->
+                    <div class="subgroup-list-vertical">
+                      <div
+                        v-for="(subgroup, sgIdx) in group.subgroups"
+                        :key="sgIdx"
+                        class="subgroup-box"
+                        :class="{
+                          active: isActiveSubgroup(gIdx, sgIdx),
+                          reviewing: isActiveSubgroup(gIdx, sgIdx) && subgroup.stage4?.status === 'reviewing',
+                          reviewed: subgroup.stage4?.status === 'done'
+                        }"
+                        @click="selectSubgroup(gIdx, sgIdx)"
+                      >
+                        <div class="subgroup-title">{{ subgroup.name }}</div>
+                        <div class="photo-grid">
+                          <!-- 原始照片 -->
+                          <div
+                            class="photo-slot"
+                            v-for="idx in subgroup.photo_indices"
+                            :key="idx"
+                          >
+                            <div class="photo-placeholder">
+                              <template v-if="photos[idx]?.url">
+                                <img
+                                  :src="photos[idx].url"
+                                  class="photo-preview"
+                                  alt="预览图片"
+                                  @click="openImagePreview(photos[idx]?.url)"
+                                />
+                              </template>
+                              <template v-else>
+                                <span class="photo-number">{{ idx + 1 }}</span>
+                                <span class="add-icon">+</span>
+                              </template>
                             </div>
-                            
-                            <!-- AI增强照片 -->
+                          </div>
+
+                          <!-- AI增强照片 -->
+                          <div
+                            class="photo-slot"
+                            v-for="(ai, aiIdx) in subgroup.ai_photos"
+                            :key="'ai-' + aiIdx"
+                          >
                             <div
-                              class="photo-slot"
-                              v-for="(ai, aiIdx) in subgroup.ai_photos"
-                              :key="'ai-' + aiIdx"
+                              class="photo-placeholder"
+                              style="position: relative;"
                             >
-                              <div
-                                class="photo-placeholder"
-                                style="position: relative;"
+                              <template v-if="ai.url">
+                                <img
+                                  :src="ai.url"
+                                  class="photo-preview"
+                                  alt="AI增强图片"
+                                  @click="openImagePreview(ai.url)"
+                                />
+                                <span class="ai-photo-label">{{ getLetterIndex(aiIdx) }}</span>
+                                <span class="ai-photo-iter-label">{{ ai.iterationLabel }}</span>
+                              </template>
+                              <template v-else>
+                                <span class="photo-number">{{ aiIdx + 1 }}</span>
+                                <span class="add-icon">+</span>
+                              </template>
+                            </div>
+                            <div class="ai-photo-controls" style="display:flex; gap:4px; width:100%; margin-top:4px;">
+                              <button
+                                class="edit-photo-btn"
+                                @click="openSuggestionModal(ai)"
+                                :disabled="!activeSubgroup || activeSubgroup.stage4?.status !== 'reviewing'"
                               >
-                                <template v-if="ai.url">
-                                  <img
-                                    :src="ai.url"
-                                    class="photo-preview"
-                                    alt="AI增强图片"
-                                    @click="openImagePreview(ai.url)"
-                                  />
-                                  <span class="ai-photo-label">{{ getLetterIndex(aiIdx) }}</span>
-                                  <span class="ai-photo-iter-label">{{ ai.iterationLabel }}</span>
-                                </template>
-                                <template v-else>
-                                  <span class="photo-number">{{ aiIdx + 1 }}</span>
-                                  <span class="add-icon">+</span>
-                                </template>
-                              </div>
-                              <div class="ai-photo-controls" style="display:flex; gap:4px; width:100%; margin-top:4px;">
-                                <button
-                                  class="edit-photo-btn"
-                                  @click="openSuggestionModal(ai)"
-                                  :disabled="!activeSubgroup || activeSubgroup.stage4?.status !== 'reviewing'"
-                                > 
-                                  指令
-                                </button>
-                                <button
-                                  class="edit-photo-btn"
-                                  style="color: #ff4d4f; border-color: #ffccc7;"
-                                  @click="deleteAiPhoto(subgroup, aiIdx)"
-                                > 
-                                  删除
-                                </button>
-                              </div>
+                                指令
+                              </button>
+                              <button
+                                class="edit-photo-btn"
+                                style="color: #ff4d4f; border-color: #ffccc7;"
+                                @click="deleteAiPhoto(subgroup, aiIdx)"
+                              >
+                                删除
+                              </button>
                             </div>
                           </div>
                         </div>
@@ -511,15 +508,13 @@
             </div>
           </div>
 
-          <div class="resize-handle" @mousedown="startResize" :class="{ 'resizing': isResizing }">
-            <div class="handle-line"></div>
-          </div>
+          <!-- Stage3 不需要 resize-handle -->
 
         </div>
 
         <!-- ==================== Stage 4: 迭代优化 ==================== -->
-        <div v-if="currentStage === 4" class="stage4-layout" style="display: flex; flex-direction: column; height: 100%;">
-          <div class="photo-panel" :class="{ collapsed: isPhotoPanelCollapsed }" :style="{ height: photoPanelHeight + 'px', flexShrink: 0, overflowY: 'auto' }">
+        <div v-if="currentStage === 4" class="stage4-layout" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+          <div class="photo-panel" :class="{ collapsed: isPhotoPanelCollapsed }" style="flex: 1; min-height: 0; overflow-y: auto;">
             <div class="panel-header">
               <h2>📷 照片面板</h2>
               <div class="panel-controls">
@@ -634,14 +629,12 @@
             </div>
           </div>
 
-          <div class="resize-handle" @mousedown="startResize" :class="{ 'resizing': isResizing }">
-            <div class="handle-line"></div>
-          </div>
+          <!-- Stage4 不需要 resize-handle -->
 
         </div>
 
         <!-- ==================== Stage 5: 视频生成 ==================== -->
-        <div v-if="currentStage === 5" class="stage5-layout" style="display: flex; flex-direction: column; height: 100%;">
+        <div v-if="currentStage === 5" class="stage5-layout" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
           <!-- 照片和视频区域 -->
           <div class="stage5-content-section" style="flex: 1; min-height: 0; overflow-y: auto;">
             <!-- 原照片集区域 -->
@@ -716,10 +709,12 @@
         </div>
 
         <!-- Stage 3 & 4：统一叙事面板（可拖拽） -->
-        <div 
+        <div
           v-if="currentStage === 3 || (currentStage === 4 && activeSubgroup)"
           class="assistant-integration-result"
-          :style="{ height: aiResultHeight + 'px', 'max-height': aiResultHeight + 'px' }"
+          :style="currentStage === 3
+            ? { flex: '1', minHeight: '0' }
+            : { height: aiResultHeight + 'px', 'max-height': aiResultHeight + 'px' }"
           style="margin:10px 0; padding:10px; border-radius:6px; border:1px dashed #d0d7de; background:#fafafa; position: relative; overflow: hidden; display: flex; flex-direction: column;"
         >
           <!-- Header -->
@@ -830,8 +825,9 @@
             ></textarea>
           </div>
 
-          <!-- Resize handle -->
+          <!-- Resize handle（仅 Stage 4 使用，Stage 3 不需要） -->
           <div
+            v-if="currentStage === 4"
             class="resize-handle-ai"
             @mousedown="startResizeAiResult"
             :class="{ resizing: isResizingAiResult }"
@@ -1719,9 +1715,11 @@ export default {
       });
 
       console.log(`已切换到 Stage ${stage}`);
-      this.$nextTick(() => {
-        this.userNarratives[stage] = this.$refs.editableNarrative?.innerHTML || '';
-      });
+      if (stage === 1) {
+        this.$nextTick(() => {
+          this.userNarratives[stage] = this.$refs.editableNarrative?.innerHTML || '';
+        });
+      }
     },
     splitHistorySpanAtRange(purpleSpan, range) {
       const tmp = document.createElement('div');
