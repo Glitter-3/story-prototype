@@ -191,12 +191,12 @@
 
 /* 中间内容区 - 弹性布局 */
 .content-area {
-  height: calc(100vh - 72px); /* 顶部 Stage 导航高度 */
-  overflow-y: auto;
+  height: calc(100vh - 60px); /* 顶部导航高度 */
+  overflow: hidden;
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 24px;
+  padding: 16px;
   min-height: 0;
 }
 
@@ -269,12 +269,11 @@
   overflow-y: auto;
   background: white;
   border-radius: 8px;
-  padding: 20px;
+  padding: 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   flex-shrink: 0;
-  display: flex; 
+  display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
 

@@ -37,8 +37,8 @@
       <section class="content-area" ref="contentArea">
         
         <!-- ==================== Stage 1: 照片上传和分组 ==================== -->
-        <div v-if="currentStage === 1" class="stage1-layout">
-          <div class="photo-panel" :class="{ collapsed: isPhotoPanelCollapsed }" :style="{ height: photoPanelHeight + 'px' }">
+        <div v-if="currentStage === 1" class="stage1-layout" style="display: flex; flex-direction: column; height: 100%;">
+          <div class="photo-panel" :class="{ collapsed: isPhotoPanelCollapsed }" :style="{ height: photoPanelHeight + 'px', flexShrink: 0 }">
             <div class="panel-header">
               <h2>📷 照片面板</h2>
               <div class="panel-controls">
@@ -176,38 +176,31 @@
             <div class="handle-line"></div>
           </div>
 
-          <div class="narrative-section" :class="{ collapsed: isNarrativeCollapsed }" :style="{ flex: 1 }">
+          <!-- Stage 1 用户口述区：充分利用照片面板下方空间 -->
+          <div class="narrative-section" style="flex: 1; display: flex; flex-direction: column; min-height: 0; background: #fff;">
             <div class="panel-header">
               <h3>📝 用户口述</h3>
               <div class="panel-controls">
                 <button class="control-btn" @click="calculateMemoryMetrics">保存文本</button>
                 <button class="control-btn" @click="reselectText">🔄 重新口述</button>
-                <button
-                  class="control-btn"
-                  @click="isNarrativeCollapsed = !isNarrativeCollapsed"
-                >
-                  {{ isNarrativeCollapsed ? '展开' : '收起' }}
-                </button>
               </div>
             </div>
-            
-            <div class="narrative-content-wrapper" v-show="!isNarrativeCollapsed">
-              <div
-                ref="editableNarrative"
-                class="narrative-input"
-                contenteditable="true"
-                @input="onEditableInput"
-                @keydown="onEditableKeydown"
-                :placeholder="'请在此输入您对这阶段照片的描述、回忆或故事……'"
-                style="white-space: pre-wrap; overflow-y: auto; min-height: 160px; border: 1px solid #ccc; padding: 10px; border-radius: 6px; color: black;"
-              ></div>
-            </div>
+            <div
+              ref="editableNarrative"
+              class="narrative-input"
+              contenteditable="true"
+              @input="onEditableInput"
+              @keydown="onEditableKeydown"
+              :placeholder="'请在此输入您对照片的描述、回忆或故事……'"
+              style="flex: 1; white-space: pre-wrap; overflow-y: auto; min-height: 0; border: 1px solid #ccc; padding: 10px; border-radius: 6px; color: black; margin: 0 0 8px 0;"
+            ></div>
           </div>
+
         </div>
 
         <!-- ==================== Stage 2: 记忆总结和问答 ==================== -->
-        <div v-if="currentStage === 2" class="stage2-layout">
-          <div class="photo-panel" :class="{ collapsed: isPhotoPanelCollapsed }" :style="{ height: photoPanelHeight + 'px' }">
+        <div v-if="currentStage === 2" class="stage2-layout" style="display: flex; flex-direction: column; height: 100%;">
+          <div class="photo-panel" :class="{ collapsed: isPhotoPanelCollapsed }" :style="{ height: photoPanelHeight + 'px', flexShrink: 0, overflowY: 'auto' }">
             <div class="panel-header">
               <h2>📷 照片面板</h2>
               <div class="panel-controls">
@@ -396,38 +389,11 @@
             <div class="handle-line"></div>
           </div>
 
-          <div class="narrative-section" :class="{ collapsed: isNarrativeCollapsed }" :style="{ flex: 1 }">
-            <div class="panel-header">
-              <h3>📝 用户口述</h3>
-              <div class="panel-controls">
-                <button class="control-btn" @click="calculateMemoryMetrics">保存文本</button>
-                <button class="control-btn" @click="reselectText">🔄 重新口述</button>
-                <button
-                  class="control-btn"
-                  @click="isNarrativeCollapsed = !isNarrativeCollapsed"
-                >
-                  {{ isNarrativeCollapsed ? '展开' : '收起' }}
-                </button>
-              </div>
-            </div>
-            
-            <div class="narrative-content-wrapper" v-show="!isNarrativeCollapsed">
-              <div
-                ref="editableNarrative"
-                class="narrative-input"
-                contenteditable="true"
-                @input="onEditableInput"
-                @keydown="onEditableKeydown"
-                :placeholder="'请在此输入您对这阶段照片的描述、回忆或故事……'"
-                style="white-space: pre-wrap; overflow-y: auto; min-height: 160px; border: 1px solid #ccc; padding: 10px; border-radius: 6px; color: black;"
-              ></div>
-            </div>
-          </div>
         </div>
 
         <!-- ==================== Stage 3: AI图像生成 ==================== -->
-        <div v-if="currentStage === 3" class="stage3-layout">
-          <div class="photo-panel" :class="{ collapsed: isPhotoPanelCollapsed }" :style="{ height: photoPanelHeight + 'px' }">
+        <div v-if="currentStage === 3" class="stage3-layout" style="display: flex; flex-direction: column; height: 100%;">
+          <div class="photo-panel" :class="{ collapsed: isPhotoPanelCollapsed }" :style="{ height: photoPanelHeight + 'px', flexShrink: 0, overflowY: 'auto' }">
             <div class="panel-header">
               <h2>📷 照片面板</h2>
               <div class="panel-controls">
@@ -549,38 +515,11 @@
             <div class="handle-line"></div>
           </div>
 
-          <div class="narrative-section" :class="{ collapsed: isNarrativeCollapsed }" :style="{ flex: 1 }">
-            <div class="panel-header">
-              <h3>📝 用户口述</h3>
-              <div class="panel-controls">
-                <button class="control-btn" @click="calculateMemoryMetrics">保存文本</button>
-                <button class="control-btn" @click="reselectText">🔄 重新口述</button>
-                <button
-                  class="control-btn"
-                  @click="isNarrativeCollapsed = !isNarrativeCollapsed"
-                >
-                  {{ isNarrativeCollapsed ? '展开' : '收起' }}
-                </button>
-              </div>
-            </div>
-            
-            <div class="narrative-content-wrapper" v-show="!isNarrativeCollapsed">
-              <div
-                ref="editableNarrative"
-                class="narrative-input"
-                contenteditable="true"
-                @input="onEditableInput"
-                @keydown="onEditableKeydown"
-                :placeholder="'请在此输入您对这阶段照片的描述、回忆或故事……'"
-                style="white-space: pre-wrap; overflow-y: auto; min-height: 160px; border: 1px solid #ccc; padding: 10px; border-radius: 6px; color: black;"
-              ></div>
-            </div>
-          </div>
         </div>
 
         <!-- ==================== Stage 4: 迭代优化 ==================== -->
-        <div v-if="currentStage === 4" class="stage4-layout">
-          <div class="photo-panel" :class="{ collapsed: isPhotoPanelCollapsed }" :style="{ height: photoPanelHeight + 'px' }">
+        <div v-if="currentStage === 4" class="stage4-layout" style="display: flex; flex-direction: column; height: 100%;">
+          <div class="photo-panel" :class="{ collapsed: isPhotoPanelCollapsed }" :style="{ height: photoPanelHeight + 'px', flexShrink: 0, overflowY: 'auto' }">
             <div class="panel-header">
               <h2>📷 照片面板</h2>
               <div class="panel-controls">
@@ -699,39 +638,12 @@
             <div class="handle-line"></div>
           </div>
 
-          <div class="narrative-section" :class="{ collapsed: isNarrativeCollapsed }" :style="{ flex: 1 }">
-            <div class="panel-header">
-              <h3>📝 用户口述</h3>
-              <div class="panel-controls">
-                <button class="control-btn" @click="calculateMemoryMetrics">保存文本</button>
-                <button class="control-btn" @click="reselectText">🔄 重新口述</button>
-                <button
-                  class="control-btn"
-                  @click="isNarrativeCollapsed = !isNarrativeCollapsed"
-                >
-                  {{ isNarrativeCollapsed ? '展开' : '收起' }}
-                </button>
-              </div>
-            </div>
-            
-            <div class="narrative-content-wrapper" v-show="!isNarrativeCollapsed">
-              <div
-                ref="editableNarrative"
-                class="narrative-input"
-                contenteditable="true"
-                @input="onEditableInput"
-                @keydown="onEditableKeydown"
-                :placeholder="'请在此输入您对这阶段照片的描述、回忆或故事……'"
-                style="white-space: pre-wrap; overflow-y: auto; min-height: 160px; border: 1px solid #ccc; padding: 10px; border-radius: 6px; color: black;"
-              ></div>
-            </div>
-          </div>
         </div>
 
         <!-- ==================== Stage 5: 视频生成 ==================== -->
-        <div v-if="currentStage === 5" class="stage5-layout">
+        <div v-if="currentStage === 5" class="stage5-layout" style="display: flex; flex-direction: column; height: 100%;">
           <!-- 照片和视频区域 -->
-          <div class="stage5-content-section" :style="{ height: stage5PhotoHeight + 'px' }">
+          <div class="stage5-content-section" style="flex: 1; min-height: 0; overflow-y: auto;">
             <!-- 原照片集区域 -->
             <div class="stage5-section original-photos-section">
               <div class="section-title">🎞️ 原照片集</div>
@@ -783,39 +695,7 @@
             </div>
           </div>
 
-          <!-- Stage5的resize-handle，用于调整照片面板和用户口述的高度 -->
-          <div 
-            class="resize-handle" 
-            @mousedown="startResizeStage5"
-            :class="{ 'resizing': isResizingStage5 }">
-            <div class="handle-line"></div>
-          </div>
-
-          <!-- Stage5的用户口述部分 -->
-          <div class="narrative-section" :style="{ 
-            flex: 1, 
-            backgroundColor: '#ffffff',
-            position: 'relative',
-            zIndex: 10
-          }">
-            <div class="panel-header">
-              <h3>📝 用户口述</h3>
-              <div class="panel-controls">
-                <button class="control-btn" @click="calculateMemoryMetrics">保存文本</button>
-                <button class="control-btn" @click="reselectText">🔄 重新口述</button>
-              </div>
-            </div>
-            
-            <div
-              ref="editableNarrative"
-              class="narrative-input"
-              contenteditable="true"
-              @input="onEditableInput"
-              @keydown="onEditableKeydown"
-              :placeholder="'请在此输入您对这阶段照片的描述、回忆或故事……'"
-              style="white-space: pre-wrap; overflow-y: auto; min-height: 160px; border: 1px solid #ccc; padding: 10px; border-radius: 6px; color: black;"
-            ></div>
-          </div>
+          <!-- Stage5无用户口述区（已移除） -->
         </div>
       </section>
 
@@ -1099,7 +979,7 @@
       </aside>
       
       <!-- ==================== 角色面板 (Character Sidebar) ==================== -->
-      <aside class="character-sidebar" :class="{ collapsed: isCharacterPanelCollapsed }" style="width: 300px; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); display: flex; flex-direction: column; flex-shrink: 0;">
+      <aside class="character-sidebar" :class="{ collapsed: isCharacterPanelCollapsed }" v-if="currentStage === 1" style="width: 300px; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); display: flex; flex-direction: column; flex-shrink: 0;">
         <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
           <h3 style="font-size: 16px; color: #333;">👥角色面板</h3>
           <button class="control-btn" @click="isCharacterPanelCollapsed = !isCharacterPanelCollapsed">
@@ -1734,7 +1614,13 @@ export default {
         this.aiSuggestion = '';
         this.iterationCount = 1;
         this.currentQuestionIndex = 0;
-        // this.iterationStopped = false;
+        // 方案B：进入 Stage 4 自动选中第一个 subgroup
+        this.$nextTick(() => {
+          if (this.photoGroupsWithAi && this.photoGroupsWithAi.length > 0 &&
+              this.photoGroupsWithAi[0].subgroups && this.photoGroupsWithAi[0].subgroups.length > 0) {
+            this.selectSubgroup(0, 0);
+          }
+        });
       }
       if (stage === 2) {
         this.currentQuestionIndex = 0;
@@ -1808,6 +1694,7 @@ export default {
       }
 
       this.$nextTick(() => {
+        // Stage 1 保留 editableNarrative，其他 stage 无此 ref
         const editor = this.$refs.editableNarrative;
         if (!editor) return;
         editor.innerHTML = this.userNarratives[stage] || '';
@@ -2590,6 +2477,15 @@ export default {
 
       try {
         // 4️⃣ 构建 payload
+
+        // 辅助：strip base64 data URI 前缀
+        const stripDataPrefix = (s) =>
+          s && s.startsWith('data:image') ? s.split(',', 2)[1] : s;
+
+        // Stage1 第一张原图作为风格参考图（strip 前缀）
+        const stylePhotoRaw = this.pendingBase64Photos[0] || null;
+        const stylePhoto = stylePhotoRaw ? stripDataPrefix(stylePhotoRaw) : null;
+
         const payloadToSend = toGenerate.map(item => {
           const refPhotos = this.getBase64PhotosBySubgroup(
             item.group_index,
@@ -2603,13 +2499,43 @@ export default {
               ? refPhotos
               : this.pendingBase64Photos.slice(0, 1);
 
+          // 获取该 subgroup 对应的原图索引集合
+          const subgroupPhotoIndices = new Set(
+            (this.photoGroups?.[item.group_index]
+              ?.subgroups?.[item.subgroup_index]
+              ?.photo_indices) || []
+          );
+
+          // 只取来自该 subgroup 原图的角色头像（按 photoIndex 过滤）
+          // 若该 subgroup 没有任何识别到的角色，则回退到全局角色（兜底）
+          let characterAvatars = this.characters
+            .filter(c => c.avatar && subgroupPhotoIndices.has(c.photoIndex))
+            .map(c => stripDataPrefix(c.avatar))
+            .filter(Boolean)
+            .slice(0, 4);
+
+          if (characterAvatars.length === 0 && this.characters.length > 0) {
+            // 兜底：用全局所有角色头像（旧逻辑）
+            characterAvatars = this.characters
+              .map(c => c.avatar ? stripDataPrefix(c.avatar) : null)
+              .filter(Boolean)
+              .slice(0, 4);
+            console.log(`[payload idx=${item.index}] ⚠️ subgroup无对应角色，回退为全局角色头像 ${characterAvatars.length} 张`);
+          } else {
+            console.log(`[payload idx=${item.index}] ✅ subgroup(g=${item.group_index},sg=${item.subgroup_index}) 匹配角色头像 ${characterAvatars.length} 张，来自原图索引:`, [...subgroupPhotoIndices]);
+          }
+
           return {
             index: item.index,
             sentence: item.sentence,
             prompt: item.prompt,
             group_index: item.group_index ?? null,
             subgroup_index: item.subgroup_index ?? null,
-            photo: finalPhotos
+            photo: finalPhotos,
+            // 按 subgroup 过滤后的角色裁剪头像（主体参考图）
+            character_avatars: characterAvatars,
+            // Stage1 第一张原图（风格参考图）
+            style_photo: stylePhoto
           };
         });
 

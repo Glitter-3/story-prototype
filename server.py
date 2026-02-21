@@ -952,24 +952,64 @@ def generate_images():
                     "error": "No reference photos provided"
                 }
 
-            # 最多取 4 张
-            proc_photos = photo_list[:4]
+            # 角色裁剪头像列表（主体参考图），由前端传入，纯 base64 字符串
+            character_avatars = item.get("character_avatars", [])  # list of pure-base64 strings
+            # Stage1 第一张原图（风格参考图），纯 base64 字符串或 None
+            style_photo = item.get("style_photo", None)
 
             try:
                 generated_urls = []
 
-                # 构造 subject_image_list（1–4 张都合法）
-                subject_imgs = [
-                    {"subject_image": extract_base64(img)}
-                    for img in proc_photos
-                ]
+                # ——— 决策：主体参考图 ———
+                # 优先使用角色面板裁剪头像（1–4 张），无则回退到 subgroup 原图
+                if character_avatars:
+                    # 最多 4 张，直接是纯 base64，不需要 extract_base64
+                    subject_imgs = [
+                        {"subject_image": b64}
+                        for b64 in character_avatars[:4]
+                    ]
+                    print(f"[generate-images idx={idx}] 使用角色裁剪头像 {len(subject_imgs)} 张作为 subject_image_list")
+                else:
+                    # 回退：用 subgroup 原图，最多 4 张
+                    proc_photos = photo_list[:4]
+                    subject_imgs = [
+                        {"subject_image": extract_base64(img)}
+                        for img in proc_photos
+                    ]
+                    print(f"[generate-images idx={idx}] 无角色头像，回退为 subgroup 原图 {len(subject_imgs)} 张")
 
-                # 不用 style_image 
+                # ——— 决策：风格参考图 ———
+                # 使用 Stage1 第一张原图（已由前端转成纯 base64）
+                style_img = style_photo if style_photo else None
+
+                # ——— API 约束：styleImage + sceneImage + subjectImageList 总数 >= 2 ———
+                # 如果 subject 只有 1 张且没有 style_img，API 会报 1201 错误
+                # 兜底方案：把 photo_list 第一张原图作为 style_img 补充
+                total_ref_count = len(subject_imgs) + (1 if style_img else 0)
+                if total_ref_count < 2:
+                    fallback_style = extract_base64(photo_list[0]) if photo_list else None
+                    if fallback_style:
+                        style_img = fallback_style
+                        print(f"[generate-images idx={idx}] ⚠️ 总参考图不足2张，自动用原图补充 style_image")
+
+                # ——— 打印本次生成依赖的参考图信息，便于调试 ———
+                print(f"\n{'='*60}")
+                print(f"[generate-images idx={idx}] 🎨 生成参数摘要")
+                print(f"  prompt: {prompt[:80]}{'...' if len(prompt)>80 else ''}")
+                print(f"  风格参考图 (style_image): {'有 ✅' if style_img else '无 ❌'}")
+                print(f"  主体参考图 (subject_image_list): {len(subject_imgs)} 张")
+                for i, s in enumerate(subject_imgs):
+                    b64_preview = list(s.values())[0][:30] if s else ''
+                    print(f"    [{i+1}] {b64_preview}...")
+                print(f"  原始 photo_list 数量: {len(photo_list)}")
+                print(f"  总参考图数量 (style+subject): {(1 if style_img else 0) + len(subject_imgs)}")
+                print(f"{'='*60}\n")
 
                 task_result = multi_ig.run(
                     subject_imgs=subject_imgs,
                     headers=HEADERS,
                     prompt=prompt,
+                    style_img=style_img,
                     model_name="kling-v2",
                     n=1,
                     aspect_ratio="3:4",
@@ -1625,10 +1665,21 @@ def analyze_characters():
                         y2 = min(img.shape[0], y2 + additional_height)
                     
                     face_img = img[y1:y2, x1:x2]
-                    
+
                     # 【修改点3】如果裁剪后的图像太小，跳过
                     if face_img.size == 0 or face_img.shape[0] < 50 or face_img.shape[1] < 50:
                         continue
+
+                    # 【修改点4】确保头像至少 300x300（可灵 API 要求像素不能太小）
+                    min_avatar_size = 300
+                    if face_img.shape[0] < min_avatar_size or face_img.shape[1] < min_avatar_size:
+                        scale = min_avatar_size / min(face_img.shape[0], face_img.shape[1])
+                        face_img = cv2.resize(
+                            face_img,
+                            (int(face_img.shape[1] * scale), int(face_img.shape[0] * scale)),
+                            interpolation=cv2.INTER_LANCZOS4
+                        )
+                        print(f"    📐 头像 upscale 到 {face_img.shape[1]}x{face_img.shape[0]}")
                         
                     valid_faces.append((x1, y1, x2-x1, y2-y1, face_img))
 
