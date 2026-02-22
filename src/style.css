@@ -1026,10 +1026,11 @@
 .subgroup-box {
   border: 2px dashed #bbb;
   border-radius: 6px;
-  padding: 8px;
+  padding: 8px 8px 14px 8px;
   background: #fafafa;
   flex-wrap: wrap;
   overflow: visible;
+  position: relative;
 }
 
 .subgroup-box.active {

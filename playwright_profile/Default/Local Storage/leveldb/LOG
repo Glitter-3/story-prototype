@@ -1,3 +1,11 @@
-2025/11/26-17:00:00.079 3c08 Reusing MANIFEST d:\Schooling life\University\大四\大四上\FDUVIS\智能故事暑研\项目代码\playwright_profile\Default\Local Storage\leveldb/MANIFEST-000001
-2025/11/26-17:00:00.085 3c08 Recovering log #4
-2025/11/26-17:00:00.087 3c08 Reusing old log d:\Schooling life\University\大四\大四上\FDUVIS\智能故事暑研\项目代码\playwright_profile\Default\Local Storage\leveldb/000004.log 
+2026/02/22-14:32:49.740 22642d Reusing MANIFEST /Users/starry/Documents/sss_files/FDUVIS/storytelling/story-prototype/playwright_profile/Default/Local Storage/leveldb/MANIFEST-000001
+2026/02/22-14:32:49.741 22642d Recovering log #4
+2026/02/22-14:32:49.742 22642d Reusing old log /Users/starry/Documents/sss_files/FDUVIS/storytelling/story-prototype/playwright_profile/Default/Local Storage/leveldb/000004.log 
+2026/02/22-14:32:49.742 22642d Delete type=2 #42
+2026/02/22-14:32:49.742 22642d Delete type=2 #40
+2026/02/22-14:33:24.298 226430 Level-0 table #8: started
+2026/02/22-14:33:24.304 226430 Level-0 table #8: 145241 bytes OK
+2026/02/22-14:33:24.307 226430 Delete type=0 #4
+2026/02/22-14:36:52.387 2267d8 Level-0 table #10: started
+2026/02/22-14:36:52.391 2267d8 Level-0 table #10: 28787 bytes OK
+2026/02/22-14:36:52.394 2267d8 Delete type=0 #7
