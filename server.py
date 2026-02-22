@@ -695,6 +695,7 @@ def generate_prompts():
         narratives = data.get('narrative', '')
         subgroup_summaries = data.get('subgroup_summaries', {})
         subgroup_context = data.get('subgroup_context', None)
+        style_tags = data.get('style_tags', {})  # 新增：按 subgroup 的风格描述
         
         # 【新增】根据 subgroup_context 调整提示词
         if subgroup_context:
@@ -881,11 +882,18 @@ def generate_prompts():
         for idx, item in enumerate(qwen_sentences):
             if idx not in matched_indices:
                 gIdx, sgIdx = sentence_to_subgroup.get(idx, (None, None))
+                # 注入风格描述到 prompt
+                base_prompt = item["prompt"]
+                style_key = f"{gIdx}_{sgIdx}"
+                if style_tags.get(style_key):
+                    enhanced_prompt = f"{base_prompt}. Photography style: {style_tags[style_key]}."
+                else:
+                    enhanced_prompt = base_prompt
                 sentence_pairs.append({
                     "index": idx,
                     "photo": None,
                     "sentence": item["sentence"],
-                    "prompt": item["prompt"],
+                    "prompt": enhanced_prompt,
                     "group_index": gIdx,
                     "subgroup_index": sgIdx
                 })
@@ -898,6 +906,83 @@ def generate_prompts():
         print("generate-prompts error:", e)
         return jsonify({"error": str(e)}), 500
     
+
+
+@app.route('/analyze-photo-style', methods=['POST'])
+def analyze_photo_style():
+    """
+    Stage 3: 按 subgroup 分析原始照片的视觉风格，生成英文风格描述 tag。
+    输入：{ "subgroups": [{ "group_index": 0, "subgroup_index": 0, "photos": ["base64..."] }] }
+    输出：{ "style_tags": { "0_0": "warm amber tones, ..." } }
+    """
+    try:
+        data = request.get_json()
+        subgroups = data.get('subgroups', [])
+        style_tags = {}
+
+        style_analysis_system = (
+            "You are a professional photography style analyst. "
+            "Analyze the overall visual style of the provided photos and output a concise English style description (40-60 words). "
+            "Cover these 6 dimensions: color tone, exposure/contrast, texture/film grain, lighting, shooting style, and overall mood. "
+            "Output ONLY the descriptive phrases separated by commas. No explanations, no JSON, no extra text."
+        )
+
+        for sg_item in subgroups:
+            gIdx = sg_item.get('group_index')
+            sgIdx = sg_item.get('subgroup_index')
+            photos_b64 = sg_item.get('photos', [])
+
+            key = f"{gIdx}_{sgIdx}"
+
+            if not photos_b64:
+                print(f"[analyze-photo-style] subgroup {key} 无照片，跳过")
+                continue
+
+            # 把 base64 列表保存为临时文件，供 qwen 调用
+            tmp_paths = []
+            try:
+                for i, b64str in enumerate(photos_b64[:4]):  # 最多取 4 张
+                    # 支持 data:image/... 前缀
+                    if ',' in b64str:
+                        b64str = b64str.split(',', 1)[1]
+                    fname = f"style_analysis_{gIdx}_{sgIdx}_{i}_{uuid.uuid4().hex[:6]}.jpg"
+                    tmp_path = GENERATED_DIR / fname
+                    with open(tmp_path, 'wb') as f:
+                        f.write(base64.b64decode(b64str))
+                    tmp_paths.append(str(tmp_path))
+
+                style_prompt = (
+                    "Please analyze the visual style of these photos. "
+                    "Output 40-60 English words covering: color tone, exposure/contrast, "
+                    "texture/film grain, lighting quality, shooting style, and mood. "
+                    "Use comma-separated phrases only."
+                )
+
+                result = analyze_images(tmp_paths, prompt=style_prompt, system_prompt=style_analysis_system)
+
+                if result:
+                    # 清理多余换行和引号
+                    tag = result.strip().strip('"').replace('\n', ', ')
+                    style_tags[key] = tag
+                    print(f"[analyze-photo-style] subgroup {key} → {tag[:80]}...")
+                else:
+                    print(f"[analyze-photo-style] subgroup {key} 分析返回空，跳过")
+
+            except Exception as e:
+                print(f"[analyze-photo-style] subgroup {key} 分析失败: {e}")
+            finally:
+                # 清理临时文件
+                for p in tmp_paths:
+                    try:
+                        os.remove(p)
+                    except Exception:
+                        pass
+
+        return jsonify({"style_tags": style_tags})
+
+    except Exception as e:
+        print("analyze-photo-style error:", e)
+        return jsonify({"style_tags": {}}), 200  # 静默降级，不返回 500
 
 
 @app.route('/generate-images', methods=['POST'])

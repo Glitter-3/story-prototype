@@ -395,8 +395,8 @@
             <div class="panel-header">
               <h2>📷 照片面板</h2>
               <div class="panel-controls">
-                <button class="control-btn" @click="generateImages" :disabled="isGeneratingImages"> 
-                  {{ isGeneratingImages ? '🖼️ 生成中...' : '🖼️ 图像补全' }} 
+                <button class="control-btn" @click="generateImages" :disabled="isGeneratingImages || isAnalyzingStyle">
+                  {{ isAnalyzingStyle ? '🎨 分析风格中...' : isGeneratingImages ? '🖼️ 生成中...' : '🖼️ 图像补全' }}
                 </button>
                 <button
                   class="control-btn"
@@ -681,55 +681,117 @@
         <div v-if="currentStage === 5" class="stage5-layout" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
           <!-- 照片和视频区域 -->
           <div class="stage5-content-section" style="flex: 1; min-height: 0; overflow-y: auto;">
-            <!-- 原照片集区域 -->
-            <div class="stage5-section original-photos-section">
-              <div class="section-title">🎞️ 原照片集</div>
-              <div class="photo-grid" style="flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start;">
-                <div class="photo-slot" v-for="(photo, index) in photos" :key="'orig-'+index">
-                  <div class="photo-placeholder">
-                    <template v-if="photo.url">
-                      <img :src="photo.url" class="photo-preview" alt="原始图片" />
-                    </template>
-                    <template v-else>
-                      <span class="photo-number">{{ index + 1 }}</span>
-                      <span class="add-icon">+</span>
-                    </template>
+
+            <!-- ===== 按 group / subgroup 展示所有照片（与 Stage3 一致）===== -->
+            <div class="photo-panel" style="flex: 1; min-height: 0; overflow-y: auto;">
+              <div class="panel-header">
+                <h2>📷 照片面板</h2>
+                <div class="panel-controls">
+                  <button class="control-btn primary" @click="generateAiVideo" :disabled="isGeneratingVideo">
+                    {{ isGeneratingVideo ? '🎬 视频生成中…' : '🎬 生成最终视频' }}
+                  </button>
+                  <span v-if="videoGenerationError" class="error-message" style="font-size:12px; color:red; margin-left:8px;">
+                    {{ videoGenerationError }}
+                  </span>
+                </div>
+              </div>
+
+              <div class="photo-panel-content">
+                <div class="group-section">
+                  <div class="timeline vertical">
+                    <div
+                      v-for="(group, gIdx) in photoGroupsWithAi"
+                      :key="gIdx"
+                      class="timeline-node-vertical"
+                    >
+                      <!-- 时间节点标题 -->
+                      <div class="group-node-vertical">
+                        <div class="group-title">{{ group.name }}</div>
+                      </div>
+
+                      <!-- 子分组列表 -->
+                      <div class="subgroup-list-vertical">
+                        <div
+                          v-for="(subgroup, sgIdx) in group.subgroups"
+                          :key="sgIdx"
+                          class="subgroup-box"
+                        >
+                          <div class="subgroup-title">{{ subgroup.name }}</div>
+                          <div class="photo-grid">
+                            <!-- 原始照片 -->
+                            <div
+                              class="photo-slot"
+                              v-for="idx in subgroup.photo_indices"
+                              :key="idx"
+                            >
+                              <div class="photo-placeholder">
+                                <template v-if="photos[idx]?.url">
+                                  <img
+                                    :src="photos[idx].url"
+                                    class="photo-preview"
+                                    alt="预览图片"
+                                    @click="openImagePreview(photos[idx]?.url)"
+                                  />
+                                </template>
+                                <template v-else>
+                                  <span class="photo-number">{{ idx + 1 }}</span>
+                                  <span class="add-icon">+</span>
+                                </template>
+                              </div>
+                            </div>
+
+                            <!-- AI 生成照片 -->
+                            <div
+                              class="photo-slot"
+                              v-for="(ai, aiIdx) in subgroup.ai_photos"
+                              :key="'ai-' + aiIdx"
+                            >
+                              <div class="photo-placeholder" style="position: relative;">
+                                <template v-if="ai.url">
+                                  <img
+                                    :src="ai.url"
+                                    class="photo-preview"
+                                    alt="AI增强图片"
+                                    @click="openImagePreview(ai.url)"
+                                  />
+                                  <span class="ai-photo-label">{{ getLetterIndex(aiIdx) }}</span>
+                                  <span class="ai-photo-iter-label">{{ ai.iterationLabel }}</span>
+                                </template>
+                                <template v-else>
+                                  <span class="photo-number">{{ aiIdx + 1 }}</span>
+                                  <span class="add-icon">+</span>
+                                </template>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-            
-            <!-- AI增强视频区域 -->
-            <div class="stage5-section video-section">
-              <div class="section-title">🎬 AI 增强视频</div>
-              <div class="video-controls">
-                <button class="control-btn primary" @click="generateAiVideo" :disabled="isGeneratingVideo">
-                  {{ isGeneratingVideo ? '视频生成中…' : '生成最终视频' }}
-                </button>
-                <span v-if="isGeneratingVideo" style="margin-left: 10px; color: #666; font-size: 12px;">
-                </span>
-                <span v-if="videoGenerationError" class="error-message">
-                  {{ videoGenerationError }}
-                </span>
-              </div>
-              
-              <!-- 视频播放器容器 -->
-              <div style="display: flex; justify-content: center; align-items: center; width: 100%; margin-top: 20px;">
-                <div class="video-slot" style="display: flex; justify-content: center; align-items: center;">
-                  <video 
-                    v-if="aiVideo.url" 
-                    :src="aiVideo.url" 
-                    controls 
+
+            <!-- ===== 视频播放区 ===== -->
+            <div class="stage5-section video-section" style="flex-shrink:0; padding: 12px 16px; border-top: 1px solid #eee;">
+              <div class="section-title" style="font-size:13px; font-weight:600; color:#555; margin-bottom:10px;">🎬 AI 增强视频</div>
+              <div style="display: flex; justify-content: center; align-items: center; width: 100%;">
+                <div class="video-slot" style="display: flex; justify-content: center; align-items: center; width: 100%;">
+                  <video
+                    v-if="aiVideo.url"
+                    :src="aiVideo.url"
+                    controls
                     class="video-player"
                     style="max-width: 100%; max-height: 300px; width: auto; height: auto; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);"
                   >
                   </video>
-                  <div v-else class="video-placeholder" style="width: 100%; height: 200px; display: flex; align-items: center; justify-content: center; background: #f5f5f5; border-radius: 8px;">
-                    <span style="color: #999;">视频生成后将显示在这里</span>
+                  <div v-else class="video-placeholder" style="width: 100%; height: 120px; display: flex; align-items: center; justify-content: center; background: #f5f5f5; border-radius: 8px;">
+                    <span style="color: #999; font-size:13px;">视频生成后将显示在这里</span>
                   </div>
                 </div>
               </div>
             </div>
+
           </div>
 
           <!-- Stage5无用户口述区（已移除） -->
@@ -1298,6 +1360,8 @@ export default {
       startHeightStage5: 0,
       showPromptModal: false,
       showPromptOverview: true,  // Stage3 Prompt总览面板折叠状态
+      styleTagsMap: {},          // 按 subgroup 的风格描述 tag，key: "{gIdx}_{sgIdx}"
+      isAnalyzingStyle: false,   // 风格分析进行中
     }
   },
   computed: {
@@ -1335,21 +1399,21 @@ export default {
     photoGroupsWithAi() {
       // 创建深拷贝，避免直接修改原数据
       const groups = JSON.parse(JSON.stringify(this.photoGroups));
-      
-      // 为每个分组添加AI照片
+
+      // 为每个分组补充 ai_photos（来自原始 photoGroups 上的响应式挂载数据）
       groups.forEach((group, gIdx) => {
         group.subgroups.forEach((subgroup, sgIdx) => {
-          // 初始化AI照片索引数组
+          // 初始化AI照片索引数组（旧逻辑保留）
           subgroup.ai_photo_indices = [];
-          
-          // 查找该subgroup对应的AI照片
-          // 这里假设每个subgroup的照片索引可以用来查找对应的AI照片
           subgroup.photo_indices.forEach(idx => {
-            // 如果有对应的AI照片，添加到列表中
             if (this.aiPhotos[idx]) {
               subgroup.ai_photo_indices.push(idx);
             }
           });
+
+          // 补充 ai_photos 数组（深拷贝不会带过来，需手动从原始数据取）
+          const origSg = this.photoGroups?.[gIdx]?.subgroups?.[sgIdx];
+          subgroup.ai_photos = origSg?.ai_photos ? JSON.parse(JSON.stringify(origSg.ai_photos)) : [];
         });
       });
       return groups;
@@ -2440,33 +2504,65 @@ export default {
         );
         this.pendingBase64Photos = base64Photos; // 暂存，供后续生图使用
 
-        // 2️⃣ 获取 Qwen 生成的 sentence_pairs
+        // 2️⃣ 按 subgroup 分析原始照片风格
+        this.isAnalyzingStyle = true;
+        try {
+          // 收集每个 subgroup 对应的原图 base64
+          const subgroupsPayload = [];
+          for (let gIdx = 0; gIdx < this.photoGroups.length; gIdx++) {
+            const group = this.photoGroups[gIdx];
+            for (let sgIdx = 0; sgIdx < group.subgroups.length; sgIdx++) {
+              const sg = group.subgroups[sgIdx];
+              const photos = (sg.photo_indices || [])
+                .slice(0, 4)
+                .map(idx => base64Photos[idx])
+                .filter(Boolean);
+              if (photos.length > 0) {
+                subgroupsPayload.push({
+                  group_index: gIdx,
+                  subgroup_index: sgIdx,
+                  photos
+                });
+              }
+            }
+          }
+
+          const styleResp = await axios.post('http://127.0.0.1:5000/analyze-photo-style', {
+            subgroups: subgroupsPayload
+          }, { timeout: 120000 });
+
+          this.styleTagsMap = styleResp.data?.style_tags || {};
+          console.log('[风格分析] 结果:', this.styleTagsMap);
+        } catch (styleErr) {
+          // 静默降级
+          console.warn('[风格分析] 失败，跳过风格约束:', styleErr);
+          this.styleTagsMap = {};
+        } finally {
+          this.isAnalyzingStyle = false;
+        }
+
+        // 3️⃣ 获取 Qwen 生成的 sentence_pairs（带风格 tag）
         const response = await axios.post('http://127.0.0.1:5000/generate-prompts', {
           photos: base64Photos,
           narrative: narrative,
-          subgroup_summaries: this.subgroupSummaries
+          subgroup_summaries: this.subgroupSummaries,
+          style_tags: this.styleTagsMap
         });
-        
+
         let pairs = response.data.sentence_pairs || [];
         pairs.sort((a, b) => a.index - b.index);
-        
+
         // 过滤出需要生成的 prompt (photo == null 或 匹配分低)
         // 并在界面上显示出来，让用户确认
         this.sentencePairs = pairs; // 保存原始配对信息
-        
+
         // 提取待生成列表 (过滤掉不需要 Prompt 的原图匹配项)
-        const toGenerate = pairs.filter(p => p.prompt); 
-        
+        const toGenerate = pairs.filter(p => p.prompt);
+
         console.log("将自动生成 Prompts:", toGenerate);
-        
-        /* // 【原 Prompt 确认流程 - 已注释】
-        this.pendingSentencePairs = pairs.filter(p => p.prompt); // 暂存待用户确认的 pairs
-        console.log("等待用户确认的 Prompts:", this.pendingSentencePairs);
-        this.showPromptModal = true; // 打开确认框
-        */
 
        // 💡 【核心修改】不再自动生成，而是打开确认弹窗供用户查看/修改
-      this.pendingSentencePairs = toGenerate; 
+      this.pendingSentencePairs = toGenerate;
       this.showPromptModal = true;
 
       } catch (error) {

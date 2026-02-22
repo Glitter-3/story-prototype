@@ -3,20 +3,20 @@ from openai import OpenAI
 import base64
 
 #图像分析助手
-def analyze_images(image_paths, prompt="图中描绘的是什么景象?"):
+def analyze_images(image_paths, prompt="图中描绘的是什么景象?", system_prompt=None):
     #配置
     client = OpenAI(
-        api_key="sk-c9abe051e7af488093cec76619576d76",  
+        api_key="sk-c9abe051e7af488093cec76619576d76",
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
     )
     content = []
-    
+
     # 添加图片
     for image_path in image_paths:
         try:
             with open(image_path, "rb") as image_file:
                 base64_image = base64.b64encode(image_file.read()).decode('utf-8')
-                
+
             content.append({
                 "type": "image_url",
                 "image_url": {
@@ -26,20 +26,20 @@ def analyze_images(image_paths, prompt="图中描绘的是什么景象?"):
         except Exception as e:
             print(f"读取图片失败: {image_path}, 错误: {e}")
             return None
-    
+
     # 添加prompt
     content.append({"type": "text", "text": prompt})
-    
+
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": content})
+
     # 调用模型
     try:
         completion = client.chat.completions.create(
             model="qwen3-vl-plus",
-            messages=[
-                {
-                    "role": "user",
-                    "content": content
-                }
-            ],
+            messages=messages,
         )
         return completion.choices[0].message.content
     except Exception as e:
