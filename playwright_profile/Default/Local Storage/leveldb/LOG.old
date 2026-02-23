@@ -1,3 +1,23 @@
-2025/11/26-17:00:00.079 3c08 Reusing MANIFEST d:\Schooling life\University\大四\大四上\FDUVIS\智能故事暑研\项目代码\playwright_profile\Default\Local Storage\leveldb/MANIFEST-000001
-2025/11/26-17:00:00.085 3c08 Recovering log #4
-2025/11/26-17:00:00.087 3c08 Reusing old log d:\Schooling life\University\大四\大四上\FDUVIS\智能故事暑研\项目代码\playwright_profile\Default\Local Storage\leveldb/000004.log 
+2026/02/23-18:18:10.558 33f863 Reusing MANIFEST /Users/starry/Documents/sss_files/FDUVIS/storytelling/story-prototype/playwright_profile/Default/Local Storage/leveldb/MANIFEST-000001
+2026/02/23-18:18:10.561 33f863 Recovering log #20
+2026/02/23-18:18:10.561 33f863 Level-0 table #23: started
+2026/02/23-18:18:10.568 33f863 Level-0 table #23: 47390 bytes OK
+2026/02/23-18:18:10.572 33f863 Delete type=0 #20
+2026/02/23-18:22:36.480 33f866 Level-0 table #26: started
+2026/02/23-18:22:36.490 33f866 Level-0 table #26: 52705 bytes OK
+2026/02/23-18:22:36.494 33f866 Delete type=0 #24
+2026/02/23-18:23:15.459 33f866 Level-0 table #28: started
+2026/02/23-18:23:15.465 33f866 Level-0 table #28: 36806 bytes OK
+2026/02/23-18:23:15.475 33f866 Delete type=0 #25
+2026/02/23-18:23:15.479 33f866 Compacting 4@0 + 1@1 files
+2026/02/23-18:23:15.492 33f866 Generated table #29@0: 69 keys, 155317 bytes
+2026/02/23-18:23:15.492 33f866 Compacted 4@0 + 1@1 files => 155317 bytes
+2026/02/23-18:23:15.499 33f866 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/02/23-18:23:15.500 33f866 Delete type=2 #28
+2026/02/23-18:23:15.505 33f866 Delete type=2 #21
+2026/02/23-18:23:15.506 33f866 Delete type=2 #23
+2026/02/23-18:23:15.506 33f866 Delete type=2 #26
+2026/02/23-18:23:15.506 33f866 Delete type=2 #19
+2026/02/23-18:26:13.322 33f866 Level-0 table #31: started
+2026/02/23-18:26:13.324 33f866 Level-0 table #31: 55518 bytes OK
+2026/02/23-18:26:13.325 33f866 Delete type=0 #27

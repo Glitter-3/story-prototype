@@ -339,27 +339,30 @@ async def upload_submit_and_wait(page, first_path: str, tail_path: str, user_pro
         raise
 
     print("⏳⏳⏳ 等待视频生成...")
-    
+
     # 检测新视频
     await asyncio.sleep(5)
     last_urls = await get_all_video_srcs(page)
     seconds_elapsed = 0
+    MAX_WAIT = 600  # 最多等待10分钟
 
-    while True:
+    while seconds_elapsed < MAX_WAIT:
         await asyncio.sleep(1)
         seconds_elapsed += 1
         current_urls = await get_all_video_srcs(page)
         new_urls = [url for url in current_urls if url not in last_urls]
-        
+
         if new_urls:
             final_url = new_urls[-1]
             print(f"✅ 检测到新视频: {final_url[:80]}...")
             if not final_url.startswith(('http://', 'https://')):
                 final_url = urljoin(page.url, final_url)
             return final_url
-        
-        if seconds_elapsed % 10 == 0:  
+
+        if seconds_elapsed % 10 == 0:
             print(f"⏳⏳⏳ 已等待 {seconds_elapsed} 秒...")
+
+    raise TimeoutError(f"等待视频生成超时（{MAX_WAIT}秒）")
 
 
 async def generate_videos(photos, prompts):
@@ -404,45 +407,48 @@ async def generate_videos(photos, prompts):
                 print(f"\n=== 任务 {idx}/{len(pairs)} (cycle={cycle}) ===")
                 print(f"  首帧: {os.path.basename(first_path)}")
                 print(f"  尾帧: {os.path.basename(tail_path)}")
-                
-                video_url = await upload_submit_and_wait(page, first_path, tail_path, user_prompt, cycle)
 
-                # 下载视频
                 try:
+                    video_url = await upload_submit_and_wait(page, first_path, tail_path, user_prompt, cycle)
+
+                    # 下载视频
                     save_name = f"{os.path.splitext(OUTPUT_FILENAME)[0]}_{cycle}.mp4"
                     save_path = os.path.join(OUTPUT_DIR, save_name)
-                    
+
                     async with aiohttp.ClientSession() as session:
                         await download_file(session, video_url, save_path)
-                    
+
                     if os.path.exists(save_path) and os.path.getsize(save_path) > 0:
                         saved_paths.append(save_path)
                         print(f"✅ 成功: {save_path} ({os.path.getsize(save_path)} bytes)")
                     else:
-                        raise Exception("文件为空")
-                        
+                        print(f"❌❌ 视频文件为空，跳过此任务: {save_path}")
+
                 except Exception as e:
-                    print(f"❌❌ 下载失败: {e}")
-                
-                # ✅ 每次任务后刷新页面（除了最后一次）
+                    print(f"❌❌ 任务 {idx} 失败，跳过: {e}")
+
+                # 每次任务后刷新页面（除了最后一次）
                 if idx < len(pairs):
                     print("🔄🔄 刷新页面准备下一个任务...")
                     await page.reload()
                     await asyncio.sleep(3)
                     print("🔄🔄 重新配置视频生成模式...")
                     await initial_setup(page)
-                
+
                 cycle += 1
 
             await context.close()
-            
+
     finally:
         # 清理临时文件
         if os.path.exists(temp_dir):
-            print(f"🗑🗑️ 清理临时目录: {temp_dir}")
+            print(f"🗑️ 清理临时目录: {temp_dir}")
             shutil.rmtree(temp_dir, ignore_errors=True)
-        
-    print(f"\n✅ 完成！成功下载 {len(saved_paths)}/{len(pairs)} 个视频")
+
+    if not saved_paths:
+        raise RuntimeError("所有视频片段均生成失败，没有可拼接的视频")
+
+    print(f"\n✅ 完成！成功下载 {len(saved_paths)}/{len(pairs)} 个视频片段")
     return saved_paths
 
 

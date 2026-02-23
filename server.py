@@ -1859,14 +1859,27 @@ def _run_video_generation_task(task_id, photo_urls, prompts):
             local_paths.append(str(local_path))
 
         video_tasks[task_id]["status"] = "generating"
-        out_name = f"final_{uuid.uuid4().hex}.mp4"
-        out_path = GENERATED_DIR / out_name
+        print(f"[video task {task_id}] 共 {len(local_paths)} 张照片，{len(prompts)} 个prompt，将生成 {len(local_paths)//2} 段视频")
+
+        # generate.py 固定输出到 static/video/generated_video.mp4
+        video_output_dir = Path(__file__).parent / "static" / "video"
+        video_output_dir.mkdir(parents=True, exist_ok=True)
+        generated_video_path = video_output_dir / "generated_video.mp4"
 
         # 调用命令行生成
         cmd = ["python", "generate.py", "--photos", *local_paths, "--prompts", *[str(p) for p in prompts]]
         subprocess.run(cmd, check=True, cwd=os.path.dirname(__file__))
 
-        video_tasks[task_id].update({"status": "success", "videoUrl": f"{BACKEND_BASE}/static/generated/{out_name}"})
+        # 将生成好的视频复制到 static/generated 并使用唯一文件名
+        out_name = f"final_{uuid.uuid4().hex}.mp4"
+        out_path = GENERATED_DIR / out_name
+        if generated_video_path.exists():
+            shutil.copy2(generated_video_path, out_path)
+            video_url = f"{BACKEND_BASE}/static/generated/{out_name}"
+        else:
+            raise FileNotFoundError(f"generate.py 未输出视频文件: {generated_video_path}")
+
+        video_tasks[task_id].update({"status": "success", "videoUrl": video_url})
 
     except Exception as e:
         print(f"Video task {task_id} failed: {e}")

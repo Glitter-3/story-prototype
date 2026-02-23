@@ -799,281 +799,213 @@
       </section>
 
       <!-- ==================== AI助手侧边栏 (Stage 2-4) ==================== -->
-      <aside class="ai-assistant" v-if="currentStage !== 1 && currentStage !== 5">
+      <aside class="ai-assistant" v-if="currentStage !== 1 && currentStage !== 5" style="display:flex; flex-direction:column; overflow:hidden;">
         <div class="assistant-header">
           <h3>🤖 AI创作助手</h3>
           <span class="status-indicator">● 在线</span>
         </div>
 
-        <div class="progress-section" v-if="currentStage === 2">
-          <div class="progress-bar">
-            <div class="progress-fill" :style="{ width: progressPercentage + '%' }"></div>
-          </div>
-          <span class="progress-text" v-if="currentStage === 2">
-            {{ answeredCount }}/{{ questions.length }} 问题已回答
-          </span>
-        </div>
-
-        <!-- Stage 3 & 4：统一叙事面板（可拖拽） -->
-        <div
-          v-if="currentStage === 3 || (currentStage === 4 && activeSubgroup)"
-          class="assistant-integration-result"
-          :style="currentStage === 3
-            ? { flex: '1', minHeight: '0', overflow: 'hidden' }
-            : { height: 'auto', overflow: 'visible' }"
-          style="margin:10px 0; padding:10px; border-radius:6px; border:1px dashed #d0d7de; background:#fafafa; position: relative; display: flex; flex-direction: column;"
-        >
-          <!-- Header -->
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-shrink:0;">
-            <strong v-if="currentStage === 4 && activeSubgroup">
-              🧠 回顾：{{ activeSubgroup.groupName }} / {{ activeSubgroup.name }}
-            </strong>
-            <strong v-else>
-              🧾 my photo story
-            </strong>
-
-            <div style="display:flex; gap:8px; align-items:center;">
-              <template v-if="currentStage === 3 || currentStage === 4">
-                <button
-                  v-if="!assistantEditMode && (assistantIntegratedText || assistantUpdatedText)"
-                  class="control-btn"
-                  @click="startEditAssistantText"
-                  style="padding:4px 8px; font-size:12px;"
-                >
-                  修改
-                </button>
-
-                <span v-if="assistantEditMode" style="display:flex; gap:6px;">
+        <!-- Stage4：可滚动的内容区 + 固定底部按钮 -->
+        <template v-if="currentStage === 4 && activeSubgroup">
+          <!-- 可滚动的上半部分 -->
+          <div style="flex:1; min-height:0; overflow-y:auto; padding:0 0 8px 0;">
+            <!-- 叙事面板 -->
+            <div
+              class="assistant-integration-result"
+              style="margin:10px; padding:10px; border-radius:6px; border:1px dashed #d0d7de; background:#fafafa; position:relative;"
+            >
+              <!-- Header -->
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <strong>🧠 回顾：{{ activeSubgroup.groupName }} / {{ activeSubgroup.name }}</strong>
+                <div style="display:flex; gap:8px; align-items:center;">
                   <button
-                    class="control-btn primary"
-                    @click="confirmAssistantEdit"
-                    :disabled="isUpdatingText"
-                    style="padding:4px 4px; font-size:14px;"
+                    v-if="!assistantEditMode && (assistantIntegratedText || assistantUpdatedText)"
+                    class="control-btn"
+                    @click="startEditAssistantText"
+                    style="padding:4px 8px; font-size:12px;"
                   >
-                    确认
+                    修改
                   </button>
-                  <button
-                    class="control-btn primary"
-                    @click="cancelAssistantEdit"
-                    :disabled="isUpdatingText"
-                    style="padding:4px 4px; font-size:14px;"
-                  >
-                    取消
-                  </button>
-                </span>
-
-                <span
-                  v-if="assistantEditedByUser"
-                  style="font-size:12px; color:#667eea; margin-left:6px;"
-                >
-                  已编辑
-                </span>
-              </template>
-            </div>
-
-            <div style="font-size:12px; color:#666;">
-              <span v-if="integrating">整合中...</span>
-              <span v-if="isUpdatingText">文本更新中...</span>
-            </div>
-          </div>
-
-          <!-- Body -->
-          <div
-            v-if="!assistantEditMode"
-            :style="currentStage === 3
-              ? 'white-space:pre-wrap; overflow:auto; color:#222; line-height:1.6; flex:1; min-height:0;'
-              : 'white-space:pre-wrap; color:#222; line-height:1.6;'"
-          >
-            <!-- Stage 3：完整故事 -->
-            <template v-if="currentStage === 3">
-              <div v-html="highlightedStoryText"></div>
-            </template>
-
-            <!-- Stage 4：子组回忆 -->
-            <template v-else-if="currentStage === 4 && activeSubgroup">
-              <template v-for="pair in filteredSentencePairs" :key="pair.index">
-                <p
-                  :style="{
+                  <span v-if="assistantEditMode" style="display:flex; gap:6px;">
+                    <button class="control-btn primary" @click="confirmAssistantEdit" :disabled="isUpdatingText" style="padding:4px 4px; font-size:14px;">确认</button>
+                    <button class="control-btn primary" @click="cancelAssistantEdit" :disabled="isUpdatingText" style="padding:4px 4px; font-size:14px;">取消</button>
+                  </span>
+                  <span v-if="assistantEditedByUser" style="font-size:12px; color:#667eea; margin-left:6px;">已编辑</span>
+                </div>
+                <div style="font-size:12px; color:#666;">
+                  <span v-if="isUpdatingText">文本更新中...</span>
+                </div>
+              </div>
+              <!-- Body -->
+              <div v-if="!assistantEditMode" style="white-space:pre-wrap; color:#222; line-height:1.6;">
+                <template v-for="pair in filteredSentencePairs" :key="pair.index">
+                  <p :style="{
                     color: pair.origin_pair_index === null ? '#4a90e2' : '#222',
                     background: pair.origin_pair_index === null ? 'rgba(74,144,226,0.08)' : 'transparent',
                     padding: pair.origin_pair_index === null ? '8px 12px' : '0',
                     borderRadius: pair.origin_pair_index === null ? '4px' : '0',
                     marginBottom: '12px'
-                  }"
-                >
-                  {{ pair.sentence }}
-                  <span
-                    v-if="pair.origin_pair_index === null"
-                    style="font-size:12px; color:#4a90e2; margin-left:8px;"
-                  >
-                    （回忆补充）
-                  </span>
-                </p>
-              </template>
-            </template>
+                  }">
+                    {{ pair.sentence }}
+                    <span v-if="pair.origin_pair_index === null" style="font-size:12px; color:#4a90e2; margin-left:8px;">（回忆补充）</span>
+                  </p>
+                </template>
+              </div>
+              <div v-else style="display:flex; flex-direction:column;">
+                <textarea
+                  v-model="assistantEditBuffer"
+                  style="font-size:14px; padding:10px; border:1px solid #ccc; border-radius:4px; resize:vertical; min-height:120px;"
+                  placeholder="请编辑整合后的照片故事……"
+                ></textarea>
+              </div>
+            </div>
+
+            <!-- 问题列表 -->
+            <div class="questions-container" v-if="stage4Questions.length > 0" style="padding-top:0; padding-bottom:0;">
+              <div style="font-size:13px; color:#555; background:#f8f9fb; border-left:4px solid #4a90e2; padding:10px 12px; margin-bottom:10px; border-radius:4px;">
+                AI 正在帮助你回忆当时<strong>画面之外</strong>的部分，比如没有被拍下的人、声音、情绪或某个瞬间。
+              </div>
+              <div
+                v-for="(question, index) in stage4Questions"
+                :key="'s4-'+index"
+                class="question-card"
+                :class="{ active: currentQuestionIndex === index, answered: question.answered }"
+              >
+                <div class="question-header">
+                  <span class="question-number">{{ index + 1 }}</span>
+                  <span v-if="question.answered" class="answered-badge">✓</span>
+                </div>
+                <p class="question-text">{{ question.text }}</p>
+                <div v-if="currentQuestionIndex === index && !question.answered" class="answer-actions">
+                  <button class="action-btn text-btn" @click="showTextInput(index, 'stage4Questions')">📝 文字输入</button>
+                  <button class="action-btn skip-btn" @click="skipQuestion(index, 'stage4Questions')">⏭️ 跳过</button>
+                </div>
+                <div v-if="question.showInput && !question.answered" class="text-input-area">
+                  <textarea v-model="question.answer" placeholder="请输入您的回答..." rows="3"></textarea>
+                  <button class="submit-btn" @click="submitAnswer(index, 'stage4Questions')">确认</button>
+                </div>
+                <div v-if="question.answered && question.answer" class="answer-display">
+                  <p>{{ question.answer }}</p>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <!-- 编辑态 -->
+          <!-- 固定底部按钮组 -->
+          <div style="flex-shrink:0; border-top:1px solid #f0f0f0; padding:12px 16px; display:flex; flex-direction:column; gap:8px;">
+            <button
+              v-if="activeSubgroup.stage4.status === 'reviewing'"
+              class="control-btn"
+              @click="fetchStage4Questions"
+              :disabled="isFetchingS4Questions || activeSubgroup.stage4.status !== 'reviewing'"
+              style="width:100%; background:linear-gradient(135deg,#c3c9e8,#d4c5e0); color:white; border-radius:6px; font-size:14px; font-weight:bold;"
+            >
+              {{ isFetchingS4Questions ? '获取问题中...' : '继续回忆' }}
+            </button>
+            <button
+              v-if="stage4Questions.some(q => q.answered)"
+              class="control-btn"
+              @click="updateText"
+              style="width:100%; background:linear-gradient(135deg,#c3c9e8,#d4c5e0); color:white; border-radius:6px; font-size:14px; font-weight:bold;"
+            >
+              整合回忆文本
+            </button>
+            <button
+              v-if="activeSubgroup.stage4.addedSentenceIndices.length > 0"
+              class="control-btn"
+              @click="generateNewImagesFromNarrative"
+              style="width:100%; background:linear-gradient(135deg,#c3c9e8,#d4c5e0); color:white; border-radius:6px; font-size:14px; font-weight:bold;"
+            >
+              为新增回忆生成图片
+            </button>
+            <button
+              class="control-btn"
+              @click="finishSubgroupReview"
+              style="width:100%; background:linear-gradient(135deg,#c3c9e8,#d4c5e0); color:white; border-radius:6px; font-size:14px; font-weight:bold;"
+            >
+              完成该子组回忆
+            </button>
+          </div>
+        </template>
+
+        <!-- Stage 2 & 3：保持原有结构 -->
+        <template v-if="currentStage === 2 || currentStage === 3">
+          <div class="progress-section" v-if="currentStage === 2">
+            <div class="progress-bar">
+              <div class="progress-fill" :style="{ width: progressPercentage + '%' }"></div>
+            </div>
+            <span class="progress-text">{{ answeredCount }}/{{ questions.length }} 问题已回答</span>
+          </div>
+
+          <!-- Stage 3 叙事面板 -->
           <div
-            v-else
-            style="flex:1; display:flex; flex-direction:column; min-height:0;"
+            v-if="currentStage === 3"
+            class="assistant-integration-result"
+            style="flex:1; min-height:0; overflow:hidden; margin:10px 0; padding:10px; border-radius:6px; border:1px dashed #d0d7de; background:#fafafa; display:flex; flex-direction:column;"
           >
-            <textarea
-              v-model="assistantEditBuffer"
-              style="
-                flex:1;
-                font-size:14px;
-                padding:10px;
-                border:1px solid #ccc;
-                border-radius:4px;
-                resize:vertical;
-                min-height:0;
-              "
-              placeholder="请编辑整合后的照片故事……"
-            ></textarea>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-shrink:0;">
+              <strong>🧾 my photo story</strong>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <button
+                  v-if="!assistantEditMode && (assistantIntegratedText || assistantUpdatedText)"
+                  class="control-btn"
+                  @click="startEditAssistantText"
+                  style="padding:4px 8px; font-size:12px;"
+                >修改</button>
+                <span v-if="assistantEditMode" style="display:flex; gap:6px;">
+                  <button class="control-btn primary" @click="confirmAssistantEdit" :disabled="isUpdatingText" style="padding:4px 4px; font-size:14px;">确认</button>
+                  <button class="control-btn primary" @click="cancelAssistantEdit" :disabled="isUpdatingText" style="padding:4px 4px; font-size:14px;">取消</button>
+                </span>
+                <span v-if="assistantEditedByUser" style="font-size:12px; color:#667eea;">已编辑</span>
+              </div>
+              <div style="font-size:12px; color:#666;">
+                <span v-if="integrating">整合中...</span>
+                <span v-if="isUpdatingText">更新中...</span>
+              </div>
+            </div>
+            <div v-if="!assistantEditMode" style="white-space:pre-wrap; overflow:auto; color:#222; line-height:1.6; flex:1; min-height:0;">
+              <div v-html="highlightedStoryText"></div>
+            </div>
+            <div v-else style="flex:1; display:flex; flex-direction:column; min-height:0;">
+              <textarea v-model="assistantEditBuffer" style="flex:1; font-size:14px; padding:10px; border:1px solid #ccc; border-radius:4px; resize:vertical; min-height:0;" placeholder="请编辑整合后的照片故事……"></textarea>
+            </div>
           </div>
 
-          <!-- Stage 4 不需要 resize-handle，文字自动完整展示 -->
-        </div>
-
-        <div class="questions-container" v-if="currentStage === 2">
-          <div 
-            v-for="(question, index) in questions" 
-            :key="index"
-            class="question-card"
-            :class="{ active: currentQuestionIndex === index, answered: question.answered }">
-            
-            <div class="question-header">
-              <span class="question-number">{{ index + 1 }}</span>
-              <span v-if="question.answered" class="answered-badge">✓</span>
-            </div>
-            
-            <p class="question-text">{{ question.text }}</p>
-            
-            <div v-if="currentQuestionIndex === index && !question.answered" class="answer-actions">
-              <button class="action-btn text-btn" @click="showTextInput(index, 'questions')">📝 文字输入</button>             
-              <button class="action-btn skip-btn" @click="skipQuestion(index, 'questions')">⏭️ 跳过</button>
-            </div>
-            
-            <div v-if="question.showInput && !question.answered" class="text-input-area">
-              <textarea
-                v-model="question.answer"
-                placeholder="请输入您的回答..."
-                rows="3"></textarea>
-              <button class="submit-btn" @click="submitAnswer(index, 'questions')">确认</button>
-            </div>
-            
-            <div v-if="question.answered && question.answer" class="answer-display">
-              <p>{{ question.answer }}</p>
+          <!-- Stage 2 问题列表 -->
+          <div class="questions-container" v-if="currentStage === 2">
+            <div
+              v-for="(question, index) in questions"
+              :key="index"
+              class="question-card"
+              :class="{ active: currentQuestionIndex === index, answered: question.answered }"
+            >
+              <div class="question-header">
+                <span class="question-number">{{ index + 1 }}</span>
+                <span v-if="question.answered" class="answered-badge">✓</span>
+              </div>
+              <p class="question-text">{{ question.text }}</p>
+              <div v-if="currentQuestionIndex === index && !question.answered" class="answer-actions">
+                <button class="action-btn text-btn" @click="showTextInput(index, 'questions')">📝 文字输入</button>
+                <button class="action-btn skip-btn" @click="skipQuestion(index, 'questions')">⏭️ 跳过</button>
+              </div>
+              <div v-if="question.showInput && !question.answered" class="text-input-area">
+                <textarea v-model="question.answer" placeholder="请输入您的回答..." rows="3"></textarea>
+                <button class="submit-btn" @click="submitAnswer(index, 'questions')">确认</button>
+              </div>
+              <div v-if="question.answered && question.answer" class="answer-display">
+                <p>{{ question.answer }}</p>
+              </div>
             </div>
           </div>
-        </div>
-        
-        <div class="questions-container" v-if="currentStage === 4 && stage4Questions.length > 0" style="padding-top: 0;">
-          <!-- 阶段说明 -->
-          <div
-            style="
-              font-size:13px;
-              color:#555;
-              background:#f8f9fb;
-              border-left:4px solid #4a90e2;
-              padding:10px 12px;
-              margin-bottom:10px;
-              border-radius:4px;
-            "
-          >
-            AI 正在帮助你回忆当时<strong>画面之外</strong>的部分，  
-            比如没有被拍下的人、声音、情绪或某个瞬间。
-          </div>
-          <div 
-            v-for="(question, index) in stage4Questions" 
-            :key="'s4-'+index"
-            class="question-card"
-            :class="{ active: currentQuestionIndex === index, answered: question.answered }">
-            
-            <div class="question-header">
-              <span class="question-number">{{ index + 1 }}</span>
-              <span v-if="question.answered" class="answered-badge">✓</span>
-            </div>
-            
-            <p class="question-text">{{ question.text }}</p>
-            
-            <div v-if="currentQuestionIndex === index && !question.answered" class="answer-actions">
-              <button class="action-btn text-btn" @click="showTextInput(index, 'stage4Questions')">📝 文字输入</button>             
-              <button class="action-btn skip-btn" @click="skipQuestion(index, 'stage4Questions')">⏭️ 跳过</button>
-            </div>
-            
-            <div v-if="question.showInput && !question.answered" class="text-input-area">
-              <textarea
-                v-model="question.answer"
-                placeholder="请输入您的回答..."
-                rows="3"></textarea>
-              <button class="submit-btn" @click="submitAnswer(index, 'stage4Questions')">确认</button>
-            </div>
-            
-            <div v-if="question.answered && question.answer" class="answer-display">
-              <p>{{ question.answer }}</p>
-            </div>
-          </div>
-        </div>
 
-        <button 
-          v-if="currentStage === 2" 
-          class="control-btn primary"
-          @click="fetchQuestions">
-          开始提问
-        </button>
-
-        <button
-          v-if=" currentStage === 3 " class="control-btn primary"
-          @click="integrateText()"
-        >
-          {{ integrating ? '整合中...' : (isUpdatingText ? '更新中...' : '整合文本' ) }}
-        </button>
-        
-        <div
-          v-if="currentStage === 4 && activeSubgroup"
-          class="assistant-footer"
-          style="display: flex; flex-direction: column; gap: 8px;"
-        >
-          <button
-            v-if="activeSubgroup.stage4.status === 'reviewing'"
-            class="control-btn"
-            @click="fetchStage4Questions"
-            :disabled="isFetchingS4Questions || !activeSubgroup || activeSubgroup.stage4.status !== 'reviewing'" 
-            style="width: 80%; display: block; margin: 0 auto; background: linear-gradient(135deg, #c3c9e8, #d4c5e0); color: white; border-radius: 6px; font-size: 14px; font-weight: bold;"
-          >
-            {{ isFetchingS4Questions ? '获取问题中...' : '继续回忆'}}
+          <button v-if="currentStage === 2" class="control-btn primary" @click="fetchQuestions">开始提问</button>
+          <button v-if="currentStage === 3" class="control-btn primary" @click="integrateText()">
+            {{ integrating ? '整合中...' : (isUpdatingText ? '更新中...' : '整合文本') }}
           </button>
+        </template>
 
-          <button
-            v-if="stage4Questions.some(q => q.answered)"
-            class="control-btn"
-            @click="updateText"
-            style="width: 80%; display: block; margin: 0 auto; background: linear-gradient(135deg, #c3c9e8, #d4c5e0); color: white; border-radius: 6px; font-size: 14px; font-weight: bold;"
-          >
-            整合回忆文本
-          </button>
-
-          <button
-            v-if="activeSubgroup.stage4.addedSentenceIndices.length > 0"
-            class="control-btn"
-            @click="generateNewImagesFromNarrative"
-            style="width: 80%; display: block; margin: 0 auto; background: linear-gradient(135deg, #c3c9e8, #d4c5e0); color: white; border-radius: 6px; font-size: 14px; font-weight: bold;"
-          >
-            为新增回忆生成图片
-          </button>
-
-          <button
-            class="control-btn"
-            @click="finishSubgroupReview"
-            style="width: 80%; display: block; margin: 0 auto; background: linear-gradient(135deg, #c3c9e8, #d4c5e0); color: white; border-radius: 6px; font-size: 14px; font-weight: bold;"
-          >
-            完成该子组回忆
-          </button>
-        </div>
       </aside>
-      
+
       <!-- ==================== 角色面板 (Character Sidebar) ==================== -->
       <aside class="character-sidebar" :class="{ collapsed: isCharacterPanelCollapsed }" v-if="currentStage === 1" style="width: 300px; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); display: flex; flex-direction: column; flex-shrink: 0;">
         <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
@@ -1397,13 +1329,12 @@ export default {
 
     // 将AI照片整合到分组结构中
     photoGroupsWithAi() {
-      // 创建深拷贝，避免直接修改原数据
+      // 创建深拷贝（只拷贝结构字段），ai_photos 直接引用原始响应式数组，不深拷贝
       const groups = JSON.parse(JSON.stringify(this.photoGroups));
 
-      // 为每个分组补充 ai_photos（来自原始 photoGroups 上的响应式挂载数据）
       groups.forEach((group, gIdx) => {
         group.subgroups.forEach((subgroup, sgIdx) => {
-          // 初始化AI照片索引数组（旧逻辑保留）
+          // 旧逻辑保留
           subgroup.ai_photo_indices = [];
           subgroup.photo_indices.forEach(idx => {
             if (this.aiPhotos[idx]) {
@@ -1411,9 +1342,14 @@ export default {
             }
           });
 
-          // 补充 ai_photos 数组（深拷贝不会带过来，需手动从原始数据取）
+          // 关键：直接引用原始响应式数组，而非深拷贝
+          // 这样 splice 操作能被 Vue 侦测到并立即更新界面
           const origSg = this.photoGroups?.[gIdx]?.subgroups?.[sgIdx];
-          subgroup.ai_photos = origSg?.ai_photos ? JSON.parse(JSON.stringify(origSg.ai_photos)) : [];
+          subgroup.ai_photos = origSg?.ai_photos || [];
+
+          // 存入 gIdx/sgIdx 方便 deleteAiPhoto 反查原始数据
+          subgroup._gIdx = gIdx;
+          subgroup._sgIdx = sgIdx;
         });
       });
       return groups;
@@ -3473,33 +3409,39 @@ export default {
                 iterationLabel: `Iter ${this.iterationCount + 1}`,
                 sentence: pairFromAll?.sentence || null,
                 origin_pair_index: res.index,
-                group_index: pairFromAll?.group_index,
-                subgroup_index: pairFromAll?.subgroup_index
+                // subgroup 模式下 pairFromAll 可能没有 group/subgroup，回退到 activeSubgroup
+                group_index: pairFromAll?.group_index ?? this.activeSubgroup?.groupIdx ?? null,
+                subgroup_index: pairFromAll?.subgroup_index ?? this.activeSubgroup?.subgroupIdx ?? null
               };
-              
+
               nextRoundAiPhotos.push(aiPhotoObj);
-              
-              // 【新增】同步更新到 photoGroups 中对应的 subgroup
-              if (pairFromAll?.group_index != null && pairFromAll?.subgroup_index != null) {
-                const sg = this.photoGroups[pairFromAll.group_index].subgroups[pairFromAll.subgroup_index];
-                if (!sg.ai_photos) {
-                  this.$set(sg, 'ai_photos', []);
+
+              // 方案三：直接追加到 subgroup.ai_photos，保留旧版本
+              const gIdx = aiPhotoObj.group_index;
+              const sgIdx = aiPhotoObj.subgroup_index;
+              if (gIdx != null && sgIdx != null) {
+                const sg = this.photoGroups[gIdx]?.subgroups?.[sgIdx];
+                if (sg) {
+                  if (!sg.ai_photos) {
+                    this.$set(sg, 'ai_photos', []);
+                  }
+                  sg.ai_photos.push(aiPhotoObj);
                 }
-                sg.ai_photos.push(aiPhotoObj);
               }
             });
           }
         }
         
-        // 5. 更新状态（原有逻辑保持不变）
+        // 5. 更新状态（方案三：直接追加，保留旧版本）
         this.iterationCount += 1;
         nextRoundAiPhotos.sort((a,b) => (a.origin_pair_index || 0) - (b.origin_pair_index || 0));
         this.aiPhotos = [...this.aiPhotos, ...nextRoundAiPhotos];
-        
-        // 6. 重新构建 allPhotos（原有逻辑保持不变）
+
+        // 6. 重新构建 allPhotos，取每个 origin_pair_index 的最新版本（aiPhotos 中最后一个匹配项）
         this.allPhotos = [];
         newSentencePairs.forEach(pair => {
-          const aiP = this.aiPhotos.find(p => p.origin_pair_index === pair.index);
+          const matches = this.aiPhotos.filter(p => p.origin_pair_index === pair.index);
+          const aiP = matches.length > 0 ? matches[matches.length - 1] : null;
           if (aiP) {
             this.allPhotos.push({
               type: 'ai',
@@ -3620,29 +3562,48 @@ export default {
         const oldUrl = ai.url
         const oldPrompt = ai.prompt
 
-        // ✅ 关键变化：直接修改 subgroup.ai_photos[aiIdx]（对象引用）
-        ai.url = firstUrl
-        ai.prompt = newPrompt
-        ai.name = `ai_modified_${Date.now()}_${aiIdx}.jpg`
-        ai.iterationLabel = `Manual_${this.iterationCount}`
+        // 方案三：不覆盖旧图，新建一个 aiObj 追加到 subgroup
+        const newAiObj = {
+          file: null,
+          url: firstUrl,
+          prompt: newPrompt,
+          name: `ai_modified_${Date.now()}_${aiIdx}.jpg`,
+          iterationLabel: `Manual_${this.iterationCount + 1}`,
+          sentence: ai.sentence,
+          origin_pair_index: ai.origin_pair_index,
+          group_index: ai.group_index,
+          subgroup_index: ai.subgroup_index
+        }
 
-        // ✅ 同步更新 allPhotos（逻辑保持一致）
+        // 追加到 this.aiPhotos
+        this.aiPhotos.push(newAiObj)
+
+        // 追加到 photoGroups 里对应的 subgroup.ai_photos
+        if (ai.group_index != null && ai.subgroup_index != null) {
+          const sg = this.photoGroups[ai.group_index]?.subgroups?.[ai.subgroup_index]
+          if (sg) {
+            if (!sg.ai_photos) this.$set(sg, 'ai_photos', [])
+            sg.ai_photos.push(newAiObj)
+          }
+        }
+
+        // 同步更新 allPhotos（指向最新版本 url）
         const targetInAll = this.allPhotos.find(
           p => p.type === 'ai' && p.url === oldUrl
         )
         if (targetInAll) {
-          targetInAll.url = ai.url
-          targetInAll.prompt = ai.prompt
-          targetInAll.iterationLabel = ai.iterationLabel
+          targetInAll.url = firstUrl
+          targetInAll.prompt = newPrompt
+          targetInAll.iterationLabel = newAiObj.iterationLabel
         }
 
-        // ✅ 记录修改（字段保持旧版语义）
+        // ✅ 记录修改日志
         this.stage4Modifications.push({
           time: new Date().toISOString(),
           photoIndex: aiIdx,
           photoLabel: this.getLetterIndex(aiIdx),
           oldUrl: oldUrl,
-          newUrl: ai.url,
+          newUrl: newAiObj.url,
           suggestion: suggestion,
           oldPrompt: oldPrompt,
           newPrompt: newPrompt
@@ -3653,12 +3614,12 @@ export default {
           type: 'manual',
           photoIndex: aiIdx,
           oldUrl: oldUrl,
-          newUrl: ai.url,
+          newUrl: newAiObj.url,
           suggestion: suggestion,
           prompt: newPrompt
         })
 
-        alert(`照片 ${this.getLetterIndex(aiIdx)} 更新完毕！`)
+        alert(`照片更新完毕！新版本已追加在旧版本后面，可删除不需要的版本。`)
       } catch (error) {
         console.error("Error in submitIndividualPhotoUpdate:", error)
         alert("S4: 根据建议更新图像时出错，请查看控制台")
@@ -3674,27 +3635,38 @@ export default {
       this.showSuggestionModal = true
     },
     deleteAiPhoto(subgroup, aiIdx) {
-      const ai = subgroup.ai_photos[aiIdx]
-      if (!ai) return
+      const ai = subgroup.ai_photos[aiIdx];
+      if (!ai) return;
 
-      if (!confirm(`确定要删除这张 AI 生成的照片 ${this.getLetterIndex(aiIdx)} 吗？`)) {
-        return
+      if (!confirm(`确定要删除这张 AI 生成的照片吗？`)) return;
+
+      const deletedUrl = ai.url;
+
+      // 直接操作原始响应式数组（通过 _gIdx/_sgIdx 定位）
+      const gIdx = subgroup._gIdx;
+      const sgIdx = subgroup._sgIdx;
+      const origSg = this.photoGroups?.[gIdx]?.subgroups?.[sgIdx];
+      if (origSg?.ai_photos) {
+        const origIdx = origSg.ai_photos.findIndex(p => p.url === deletedUrl);
+        if (origIdx !== -1) {
+          origSg.ai_photos.splice(origIdx, 1);
+        }
       }
 
-      const deletedUrl = ai.url
+      // 同步从 aiPhotos 中删除
+      const aiPhotosIdx = this.aiPhotos.findIndex(p => p.url === deletedUrl);
+      if (aiPhotosIdx !== -1) {
+        this.aiPhotos.splice(aiPhotosIdx, 1);
+      }
 
-      // 1️⃣ 从当前 subgroup 中删除（这是 UI 的唯一数据源）
-      subgroup.ai_photos.splice(aiIdx, 1)
-
-      // 2️⃣ 同步从 allPhotos 中删除（影响 Stage 5 / 视频）
-      if (this.allPhotos && this.allPhotos.length > 0) {
+      // 同步从 allPhotos 中删除（影响 Stage5 视频）
+      if (this.allPhotos?.length > 0) {
         this.allPhotos = this.allPhotos.filter(
           p => !(p.type === 'ai' && p.url === deletedUrl)
-        )
+        );
       }
 
-      // 3️⃣ （可选）记录日志
-      console.log(`已删除 AI 照片 ${this.getLetterIndex(aiIdx)}`)
+      console.log(`已删除 AI 照片，url: ${deletedUrl}`);
     },
 
     startResizeAiResult(e) {
@@ -3973,13 +3945,12 @@ export default {
     this.aiVideo.url = ''; // 清空之前的视频
 
     // 🔥🔥🔥【核心修复】添加40秒等待期
-    console.log('⏳ 等待40秒后开始检测视频生成状态...');
-    this.$message?.info?.('视频任务已提交，等待40秒后开始检测生成状态...');
-    
-    // 延迟40秒后再开始检测
+    console.log('[Stage5] 视频任务已提交，开始轮询状态...');
+
+    // 5秒后开始轮询（给服务器启动时间）
     setTimeout(() => {
         this.startVideoPolling(taskId, allPhotosUrls, videoSequences);
-    }, 40000); // 40秒等待
+    }, 5000);
 
   } catch (err) {
     console.error("[Video Gen Submit Error]", err);
@@ -3989,224 +3960,60 @@ export default {
   }
 },
 
-// 🔥🔥🔥【新增】独立的视频轮询方法
-// 替换 startVideoPolling 方法
 startVideoPolling(taskId, allPhotosUrls, videoSequences) {
-  console.log('🔍🔍 开始检测视频文件状态...');
-  this.$message?.info?.('开始检测视频生成进度...');
+  console.log('[Stage5] 开始轮询视频任务状态, taskId:', taskId);
 
-  const MAX_POLL = 1800; // 30分钟（1800秒）
+  const MAX_POLL = 360; // 最多30分钟（每5秒一次）
   let pollCount = 0;
-  
-  // 🔥🔥🔥【核心修复】新增基准时间点状态记录
-  let baselineFileSize = 0;     // 第40秒的文件大小
-  let baselineModified = 0;      // 第40秒的修改时间
-  let baselineRecorded = false;  // 是否已记录基准状态
-  
-  // 🔥🔥🔥【核心修复】新增40秒后检测标志
-  let checkAfter40s = false;     // 是否开始40秒后检测
-  let fileChanged = false;       // 文件是否发生了变化
 
   const pollInterval = setInterval(async () => {
     try {
       pollCount++;
-      
-      // 检查视频文件状态
-      const statusResp = await axios.get(`http://127.0.0.1:5000/video-file-status`, {
-        timeout: 10000,
-        params: {
-          taskId: taskId,
-          timestamp: Date.now() // 避免缓存
-        }
+
+      const statusResp = await axios.get(`http://127.0.0.1:5000/video-status/${taskId}`, {
+        timeout: 10000
       });
 
-      const { fileExists, fileSize, lastModified: currentModified, videoUrl, isCompleted, error } = statusResp.data;
+      const { status, videoUrl, error } = statusResp.data;
+      console.log(`[视频轮询] 第${pollCount}次 - 状态: ${status}`);
 
-      console.log(`[视频检测] 轮询第${pollCount}次 - 文件存在: ${fileExists}, 大小: ${fileSize}字节, 修改时间: ${currentModified}`);
-
-      if (error) {
+      if (status === 'success' && videoUrl) {
         clearInterval(pollInterval);
-        this.videoGenerationError = error;
+        this.aiVideo.url = videoUrl + '?t=' + Date.now();
         this.isGeneratingVideo = false;
-        this.$message?.error?.(`视频生成错误：${error}`);
+        this.stage5VideoResult = {
+          generatedTime: new Date().toISOString(),
+          videoUrl: this.aiVideo.url
+        };
+        console.log('[Stage5] 视频生成成功:', videoUrl);
         return;
       }
 
-      // 🔥🔥🔥【核心修复】第40秒记录基准状态
-      if (pollCount === 1) { // 第40秒（因为等待40秒后才开始轮询，所以第一次轮询就是第40秒）
-        baselineFileSize = fileSize || 0;
-        baselineModified = currentModified || 0;
-        baselineRecorded = true;
-        console.log(`📊📊 第40秒基准状态记录 - 大小: ${baselineFileSize}, 修改时间: ${baselineModified}`);
-        this.$message?.info?.('已记录第40秒视频文件状态，开始检测40秒后的变化...');
-        
-        // 如果文件不存在或大小为0，设置默认基准
-        if (!fileExists || fileSize === 0) {
-          console.log('⚠️⚠️ 第40秒文件不存在或为空，等待文件生成...');
-        }
+      if (status === 'failed') {
+        clearInterval(pollInterval);
+        this.videoGenerationError = error || '视频生成失败';
+        this.isGeneratingVideo = false;
+        console.error('[Stage5] 视频生成失败:', error);
+        return;
       }
 
-      // 🔥🔥🔥【核心修复】第80秒进行对比检测（第8次轮询，因为40秒后每5秒一次，8 * 5=40秒）
-      if (pollCount === 8 && baselineRecorded) {
-        checkAfter40s = true;
-        
-        const currentFileSize = fileSize || 0;
-        const currentModifiedTime = currentModified || 0;
-        
-        console.log(`📊📊 第80秒状态 - 大小: ${currentFileSize}, 修改时间: ${currentModifiedTime}`);
-        console.log(`📊📊 40秒前后对比 - 大小变化: ${currentFileSize - baselineFileSize}, 修改时间是否相同: ${currentModifiedTime === baselineModified}`);
-        
-        // 🔥🔥🔥【核心逻辑】检测40秒后是否有变化 - 只有变化才算完成
-        if (currentFileSize !== baselineFileSize || currentModifiedTime !== baselineModified) {
-          // 文件发生了变化，认为视频生成完成
-          fileChanged = true;
-          console.log('✅✅✅ 检测到文件在40秒内发生变化，视频生成完成！');
-          
-          clearInterval(pollInterval);
-          const finalVideoUrl = videoUrl + '?t=' + Date.now();
-          this.aiVideo.url = finalVideoUrl;
-          this.isGeneratingVideo = false;
-          
-          this.$message?.success?.("🎬 视频生成成功！（检测到40秒内文件变化）");
-          
-          // 记录到实验日志
-          this.stage5VideoResult = {
-            generatedTime: new Date().toISOString(),
-            videoUrl: finalVideoUrl,
-            fileSize: currentFileSize,
-            lastModified: currentModifiedTime,
-            baseline40s: {
-              size: baselineFileSize,
-              modified: baselineModified
-            },
-            after40s: {
-              size: currentFileSize,
-              modified: currentModifiedTime,
-              changed: true
-            },
-            changeDetected: true,
-            sizeChange: currentFileSize - baselineFileSize,
-            timeChange: currentModifiedTime !== baselineModified,
-            detectionMethod: '40s_change_detected',
-            totalWaitTime: 40 + (pollCount * 5) // 40秒等待 + 轮询时间
-          };
-          
-          return;
-        } else {
-          // 40秒内文件没有变化，继续监控
-          console.log('⏳⏳ 40秒内文件无变化，继续监控...');
-          this.$message?.info?.('40秒内未检测到文件变化，继续监控文件状态...');
-        }
-      }
-
-      // 🔥🔥🔥【核心修复】第80秒后继续监控，直到检测到变化
-      if (checkAfter40s && !fileChanged) {
-        const currentFileSize = fileSize || 0;
-        const currentModifiedTime = currentModified || 0;
-        
-        // 检查是否发生变化
-        if (currentFileSize !== baselineFileSize || currentModifiedTime !== baselineModified) {
-          // 文件发生了变化，认为视频生成完成
-          fileChanged = true;
-          console.log(`✅✅✅ 第${pollCount * 5}秒检测到文件变化，视频生成完成！`);
-          
-          clearInterval(pollInterval);
-          const finalVideoUrl = videoUrl + '?t=' + Date.now();
-          this.aiVideo.url = finalVideoUrl;
-          this.isGeneratingVideo = false;
-          
-          this.$message?.success?.(`🎬 视频生成成功！（第${pollCount * 5}秒检测到变化）`);
-          
-          this.stage5VideoResult = {
-            generatedTime: new Date().toISOString(),
-            videoUrl: finalVideoUrl,
-            fileSize: currentFileSize,
-            lastModified: currentModifiedTime,
-            baseline40s: {
-              size: baselineFileSize,
-              modified: baselineModified
-            },
-            after40s: {
-              size: currentFileSize,
-              modified: currentModifiedTime,
-              changed: true
-            },
-            changeDetected: true,
-            sizeChange: currentFileSize - baselineFileSize,
-            timeChange: currentModifiedTime !== baselineModified,
-            detectionMethod: `change_detected_at_${pollCount * 5}s`,
-            totalWaitTime: 40 + (pollCount * 5)
-          };
-          
-          return;
-        } else {
-          // 文件尚未变化，继续监控
-          if (pollCount % 5 === 0) { // 每25秒提示一次
-            console.log(`⏳⏳ 第${pollCount * 5}秒，文件尚未发生变化，继续监控...`);
-            this.$message?.info?.(`已监控${pollCount * 5}秒，文件尚未完成生成，继续等待...`);
-          }
-        }
-      }
-
-      // 超时处理
+      // 超时
       if (pollCount >= MAX_POLL) {
         clearInterval(pollInterval);
-        const msg = `检测超时（${MAX_POLL * 5}秒），未检测到文件变化`;
-        this.videoGenerationError = msg;
+        this.videoGenerationError = '视频生成超时（30分钟）';
         this.isGeneratingVideo = false;
-        this.$message?.error?.(msg);
-        
-        // 记录超时状态
-        this.stage5VideoResult = {
-          generatedTime: new Date().toISOString(),
-          videoUrl: videoUrl || '',
-          fileSize: fileSize || 0,
-          lastModified: currentModified || 0,
-          baseline40s: {
-            size: baselineFileSize,
-            modified: baselineModified
-          },
-          after40s: {
-            size: fileSize || 0,
-            modified: currentModified || 0,
-            changed: false
-          },
-          changeDetected: false,
-          timeout: true,
-          detectionMethod: 'timeout_no_change',
-          totalWaitTime: MAX_POLL * 5
-        };
-        
-        console.error(msg);
+        console.error('[Stage5] 视频生成超时');
       }
-      
-      // 进度提示
-      if (pollCount === 1) {
-        this.$message?.info?.('开始检测，已等待40秒，开始记录基准状态...');
-      } else if (pollCount === 8) {
-        this.$message?.info?.('已检测40秒，正在分析文件变化...');
-      } else if (pollCount % 10 === 0 && !checkAfter40s) {
-        this.$message?.info?.(`持续检测中，已进行 ${pollCount} 次检测（${pollCount * 5}秒）...`);
-      }
-      
+
     } catch (err) {
-      console.error(`轮询视频文件状态出错:`, err);
-      
-      // 网络错误不立即失败，继续重试
-      if (pollCount % 5 === 0) {
-        this.$message?.warning?.(`网络检测错误，继续重试... (第${pollCount}次)`);
-      }
-      
+      console.error(`[Stage5] 轮询出错 (第${pollCount}次):`, err.message);
       if (pollCount >= MAX_POLL) {
         clearInterval(pollInterval);
-        const msg = `轮询超时（${MAX_POLL}次）`;
-        this.videoGenerationError = msg;
+        this.videoGenerationError = '轮询超时';
         this.isGeneratingVideo = false;
-        this.$message?.error?.(msg);
-        console.error(msg);
       }
     }
-  }, 5000); // 每5秒轮询一次
+  }, 5000);
 }
   }
 }
