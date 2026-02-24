@@ -1859,7 +1859,12 @@ def _run_video_generation_task(task_id, photo_urls, prompts):
             local_paths.append(str(local_path))
 
         video_tasks[task_id]["status"] = "generating"
-        print(f"[video task {task_id}] 共 {len(local_paths)} 张照片，{len(prompts)} 个prompt，将生成 {len(local_paths)//2} 段视频")
+        n_pairs = len(local_paths) // 2
+        print(f"[video task {task_id}] 共 {len(local_paths)} 张照片，{len(prompts)} 个prompt，将生成 {n_pairs} 段视频")
+        for i in range(n_pairs):
+            first = os.path.basename(local_paths[i * 2])
+            tail  = os.path.basename(local_paths[i * 2 + 1])
+            print(f"  片段 {i+1}/{n_pairs}: 首帧={first}  尾帧={tail}")
 
         # generate.py 固定输出到 static/video/generated_video.mp4
         video_output_dir = Path(__file__).parent / "static" / "video"

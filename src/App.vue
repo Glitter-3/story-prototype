@@ -3743,79 +3743,59 @@ export default {
   let pollInterval = null;
 
   try {
-    console.log('🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬 [Stage5] 开始生成即梦视频（使用角色面板主角脸部）...');
+    console.log('[Stage5] 开始生成视频，从 photoGroupsWithAi 收集当前照片...');
 
-    // ✅ 直接使用原始照片或AI照片
-    let photosToUse = [];
-    let subjectPhotosToUse = []; // 存储角色面板中的主角脸部照片
-    
-    // 如果有 allPhotos（包含 AI 图片），优先使用
-    if (this.allPhotos && this.allPhotos.length > 0) {
-        photosToUse = this.allPhotos;
-        console.log('✅ 使用 Stage3/Stage4 生成的 AI 图片');
-    } 
-    // 如果没有 AI 图片，直接使用原始照片
-    else if (this.photos && this.photos.length > 0) {
-        photosToUse = this.photos.map((photo, index) => ({
-            type: 'original',
-            url: photo.url,
-            sentence: `原始照片 ${index + 1}`,
-            sourceIndex: index
-        }));
-        console.log('✅ 直接使用原始照片生成视频');
-    } 
-    // 没有任何图片
-    else {
-        throw new Error('没有可用的图片素材，请先上传照片');
-    }
+    // 从 photoGroupsWithAi 实时收集当前面板里所有照片（与展示完全一致）
+    // 顺序：按 group → subgroup → 每个 subgroup 内先原图后 AI 图
+    const processedPhotosUrls = [];
+    const processedSentences = [];
+    const processedSubjectPhotos = [];
 
-    // ✅ 新功能：为每张照片查找对应的主角脸部照片
-    photosToUse.forEach((photo, index) => {
-      // 获取照片的索引
-      const photoIndex = photo.sourceIndex !== undefined ? photo.sourceIndex : index;
-      
-      // 在角色面板中查找该照片对应的主角（isMain为true的角色）
-      const mainCharacter = this.characters.find(char => 
-        char.photoIndex === photoIndex && char.isMain
-      );
-      
-      if (mainCharacter && mainCharacter.avatar) {
-        subjectPhotosToUse.push(mainCharacter.avatar);
-        console.log(`✅ 照片 ${index} 找到对应主角脸部`);
-      } else {
-        // 如果没有找到主角脸部照片，使用原始照片作为占位
-        subjectPhotosToUse.push(photo.url);
-        console.log(`⚠️ 照片 ${index} 未找到主角脸部，使用原图`);
+    for (const group of this.photoGroupsWithAi) {
+      for (const subgroup of group.subgroups) {
+        // 1. 原始照片
+        for (const idx of subgroup.photo_indices) {
+          const photoUrl = this.photos[idx]?.url;
+          if (!photoUrl) continue;
+          const fullUrl = photoUrl.startsWith('http') ? photoUrl : 'http://127.0.0.1:5000' + photoUrl;
+          processedPhotosUrls.push(fullUrl);
+          processedSentences.push(`${group.name} - ${subgroup.name} - 原图${idx + 1}`);
+          // 查找主角脸部
+          const mainChar = this.characters.find(c => c.photoIndex === idx && c.isMain);
+          processedSubjectPhotos.push(mainChar?.avatar || fullUrl);
+        }
+        // 2. AI 照片（当前 subgroup.ai_photos 里还存在的）
+        for (const ai of (subgroup.ai_photos || [])) {
+          if (!ai.url) continue;
+          processedPhotosUrls.push(ai.url);
+          processedSentences.push(`${group.name} - ${subgroup.name} - ${ai.iterationLabel || 'AI'}`);
+          // AI 图也尝试用第一张原图对应的主角脸部
+          const firstOrigIdx = subgroup.photo_indices[0];
+          const mainChar = this.characters.find(c => c.photoIndex === firstOrigIdx && c.isMain);
+          processedSubjectPhotos.push(mainChar?.avatar || ai.url);
+        }
       }
-    });
-
-    const allPhotosUrls = photosToUse.map(p => p.url).filter(url => url && typeof url === 'string');
-    const allSentences = photosToUse.map(p => p.sentence || '');
-    const allSourceIndexes = photosToUse.map(p => p.sourceIndex || 0);
-
-    console.log(`[Stage5] 使用 ${allPhotosUrls.length} 张图片生成视频`);
-    console.log(`[Stage5] 使用 ${subjectPhotosToUse.length} 张主角脸部照片`);
-
-    // ✅ 处理单张图片的情况 - 重复使用同一张图片
-    let processedPhotosUrls = [...allPhotosUrls];
-    let processedSourceIndexes = [...allSourceIndexes];
-    let processedSentences = [...allSentences];
-    let processedSubjectPhotos = [...subjectPhotosToUse];
-    
-    if (allPhotosUrls.length === 1) {
-        console.log('⚠️ 只有一张图片，将重复使用以创建视频效果');
-        processedPhotosUrls.push(allPhotosUrls[0]);
-        processedSourceIndexes.push(allSourceIndexes[0]);
-        processedSentences.push(allSentences[0] + '（重复）');
-        processedSubjectPhotos.push(subjectPhotosToUse[0]);
     }
 
-    console.log(`[Stage5] 处理后的图片序列:`, processedPhotosUrls.map((url, i) => 
-      `图${i+1}`).join(' -> '));
+    if (processedPhotosUrls.length === 0) {
+      throw new Error('没有可用的图片素材，请先上传或生成照片');
+    }
+
+    // 只有 1 张时重复，确保至少能生成一个片段
+    if (processedPhotosUrls.length === 1) {
+      processedPhotosUrls.push(processedPhotosUrls[0]);
+      processedSentences.push(processedSentences[0]);
+      processedSubjectPhotos.push(processedSubjectPhotos[0]);
+    }
+
+    console.log(`[Stage5] 共收集 ${processedPhotosUrls.length} 张照片，将生成 ${processedPhotosUrls.length * 2 - 1} 个视频片段`);
+    processedPhotosUrls.forEach((url, i) => {
+      console.log(`  [图${i + 1}] ${processedSentences[i]}  ${url.split('/').pop()}`);
+    });
 
     // ✅ 构建视频序列：包括静态视频和过渡视频
     const videoSequences = [];
-    
+
     for (let i = 0; i < processedPhotosUrls.length; i++) {
         // 1. 生成静态视频（AA, BB, CC...）
         const staticSequence = {
@@ -3823,14 +3803,13 @@ export default {
             index: i * 2,
             photo1: processedPhotosUrls[i],
             photo2: processedPhotosUrls[i],
-            subject1: processedSubjectPhotos[i], // 使用主角脸部照片
+            subject1: processedSubjectPhotos[i],
             subject2: processedSubjectPhotos[i],
-            sourceIndex: processedSourceIndexes[i],
             sentence: processedSentences[i] || `图片 ${i + 1}`,
-            description: `静态视频 - ${processedSentences[i]}`
+            description: `片段${i * 2 + 1} [静态] ${processedSentences[i]}`
         };
         videoSequences.push(staticSequence);
-        
+
         // 2. 生成过渡视频（AB, BC...），除了最后一张照片
         if (i < processedPhotosUrls.length - 1) {
             const transitionSequence = {
@@ -3838,19 +3817,20 @@ export default {
                 index: i * 2 + 1,
                 photo1: processedPhotosUrls[i],
                 photo2: processedPhotosUrls[i + 1],
-                subject1: processedSubjectPhotos[i], // 使用第一张的主角脸部
-                subject2: processedSubjectPhotos[i + 1], // 使用第二张的主角脸部
-                sourceIndex1: processedSourceIndexes[i],
-                sourceIndex2: processedSourceIndexes[i + 1],
+                subject1: processedSubjectPhotos[i],
+                subject2: processedSubjectPhotos[i + 1],
                 sentence1: processedSentences[i] || `图片 ${i + 1}`,
                 sentence2: processedSentences[i + 1] || `图片 ${i + 2}`,
-                description: `过渡视频 - 从"${processedSentences[i]}"到"${processedSentences[i + 1]}"`
+                description: `片段${i * 2 + 2} [过渡] ${processedSentences[i]} → ${processedSentences[i + 1]}`
             };
             videoSequences.push(transitionSequence);
         }
     }
 
-    console.log(`[Stage5] 生成 ${videoSequences.length} 个视频序列`);
+    console.log(`[Stage5] 共 ${videoSequences.length} 个视频片段，开始并行生成prompt...`);
+    videoSequences.forEach((seq, i) => {
+      console.log(`  ${seq.description}`);
+    });
 
     // 为每个视频序列动态生成专用prompt
     const jimengPromises = videoSequences.map(async (sequence, seqIndex) => {
@@ -3883,34 +3863,35 @@ export default {
 
             if (response.data && response.data.prompt) {
                 const dynamicPrompt = response.data.prompt;
-                console.log(`[Stage5] ${promptType}序列 ${seqIndex+1} 动态生成prompt: ${dynamicPrompt}`);
+                console.log(`[Stage5] ${sequence.description} → prompt生成完毕`);
                 return {
                     prompt: dynamicPrompt,
                     photos: promptType === 'static' ? [sequence.photo1] : [sequence.photo1, sequence.photo2],
-                    type: promptType
+                    type: promptType,
+                    description: sequence.description
                 };
             } else {
                 throw new Error('未获取到有效的prompt');
             }
         } catch (error) {
-            console.error(`${sequence.type}序列 ${seqIndex+1} 生成prompt失败:`, error);
+            console.error(`[Stage5] ${sequence.description} prompt生成失败，使用fallback:`, error.message);
             let fallbackPrompt = '';
             if (sequence.type === 'static') {
                 fallbackPrompt = `展示"${sequence.sentence}"的静态画面，带有微妙的光影变化`;
             } else {
                 fallbackPrompt = `从"${sequence.sentence1}"到"${sequence.sentence2}"的平滑过渡效果`;
             }
-            console.log(`[Stage5] 使用默认prompt: ${fallbackPrompt}`);
             return {
                 prompt: fallbackPrompt,
                 photos: sequence.type === 'static' ? [sequence.photo1] : [sequence.photo1, sequence.photo2],
-                type: sequence.type
+                type: sequence.type,
+                description: sequence.description
             };
         }
     });
 
     const jimengResults = await Promise.all(jimengPromises);
-    console.log(`[Stage5] 所有动态prompts生成完成`);
+    console.log(`[Stage5] 所有prompt生成完成，准备提交视频生成任务`);
 
     // 准备提交视频生成的数据
     const flatPhotos = [];
@@ -3923,9 +3904,12 @@ export default {
             flatPhotos.push(result.photos[0], result.photos[1]);
         }
         flatPrompts.push(result.prompt);
+        const p1 = result.photos[0]?.split('/').pop() || '?';
+        const p2 = (result.photos[1] || result.photos[0])?.split('/').pop() || '?';
+        console.log(`  [${index + 1}] ${result.description}  首帧=${p1}  尾帧=${p2}`);
     });
 
-    console.log(`[Stage5] 提交 ${flatPhotos.length} 张照片和 ${flatPrompts.length} 个prompts`);
+    console.log(`[Stage5] 提交 ${flatPhotos.length} 张照片（${flatPrompts.length} 个片段）给后端`);
 
     const submitResp = await axios.post('http://127.0.0.1:5000/generate-video', {
         photos: flatPhotos, 
