@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 2026/02/24-16:14:17.252 3e2809 Reusing MANIFEST /Users/starry/Documents/sss_files/FDUVIS/storytelling/story-prototype/playwright_profile/Default/Local Storage/leveldb/MANIFEST-000001
 2026/02/24-16:14:17.253 3e2809 Recovering log #37
 2026/02/24-16:14:17.254 3e2809 Level-0 table #41: started
@@ -48,3 +49,8 @@
 2026/02/24-16:47:38.828 3e30ce Level-0 table #62: started
 2026/02/24-16:47:38.835 3e30ce Level-0 table #62: 56138 bytes OK
 2026/02/24-16:47:38.839 3e30ce Delete type=0 #59
+=======
+2026/02/25-21:56:02.061 4b4c Reusing MANIFEST C:\Users\Administrator\Desktop\story-prototype-main\playwright_profile\Default\Local Storage\leveldb/MANIFEST-000001
+2026/02/25-21:56:02.066 4b4c Recovering log #12
+2026/02/25-21:56:02.068 4b4c Reusing old log C:\Users\Administrator\Desktop\story-prototype-main\playwright_profile\Default\Local Storage\leveldb/000012.log 
+>>>>>>> 48b5ea9 (submit by lue)

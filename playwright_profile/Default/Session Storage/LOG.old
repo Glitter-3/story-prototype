@@ -1,3 +1,9 @@
+<<<<<<< HEAD
 2026/02/24-00:11:14.445 37e4aa Reusing MANIFEST /Users/starry/Documents/sss_files/FDUVIS/storytelling/story-prototype/playwright_profile/Default/Session Storage/MANIFEST-000001
 2026/02/24-00:11:14.446 37e4aa Recovering log #3
 2026/02/24-00:11:14.446 37e4aa Reusing old log /Users/starry/Documents/sss_files/FDUVIS/storytelling/story-prototype/playwright_profile/Default/Session Storage/000003.log 
+=======
+2026/02/25-21:52:19.082 4178 Reusing MANIFEST C:\Users\Administrator\Desktop\story-prototype-main\playwright_profile\Default\Session Storage/MANIFEST-000001
+2026/02/25-21:52:19.082 4178 Recovering log #3
+2026/02/25-21:52:19.084 4178 Reusing old log C:\Users\Administrator\Desktop\story-prototype-main\playwright_profile\Default\Session Storage/000003.log 
+>>>>>>> 48b5ea9 (submit by lue)

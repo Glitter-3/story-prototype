@@ -1415,18 +1415,25 @@ def save_experiment_log():
         return jsonify({"success": False, "message": str(e)}), 500
 
 # ================= 视频生成相关 =================
+<<<<<<< HEAD
 
 # ================= 视频生成相关 =================
 
 @app.route('/refine-prompt', methods=['POST'])
 def refine_prompt():
     """生成视频 Prompt - 支持单张照片的静态视频和照片对的过渡视频，新增主体照片参数"""
+=======
+@app.route('/refine-prompt', methods=['POST'])
+def refine_prompt():
+    """生成视频 Prompt - 支持单张照片的静态视频和照片对的过渡视频，新增主体照片参数。强制要求有照片输入。"""
+>>>>>>> 48b5ea9 (submit by lue)
     try:
         data = request.get_json()
         p_type = data.get("type", "transition")
         sentence = data.get("sentence", "")
         next_sent = data.get("next_sentence", "")
         photo_pair = data.get("photo_pair", [])  # 原始照片对
+<<<<<<< HEAD
         subject_pair = data.get("subject_pair", [])  # 新增：主体照片对
         
         # === 新增：主体照片检查逻辑 ===
@@ -1435,11 +1442,35 @@ def refine_prompt():
         valid_subject_paths = []
         
         # 检查主体照片的有效性
+=======
+        subject_pair = data.get("subject_pair", [])  # 主体照片对
+
+        # === 强制检查：必须有原始照片 ===
+        if not photo_pair:
+            return jsonify({"error": "必须提供原始照片（photo_pair），系统不支持纯文本生成模式。"}), 400
+
+        # === 定义半结构化固定要求（将在AI生成结果后强制追加） ===
+        HALF_STRUCTURED_RULES = """
+【必须遵守的生成规则】：
+1.  **场景过渡平滑性**：严禁场景/背景的突然切换、溶解、跳切或淡入淡出。所有背景变化必须通过主体人物转场实现，背景转场自然，必须与主体动作节奏同步，实现渐进、连贯的视觉演变。
+2.  **主体动作自然度**：人物的所有动作、表情必须自然流畅，符合真实物理规律和人体工学，严禁浮夸、机械或扭曲的表现，以避免恐怖谷效应。
+3.  **主体连贯性 (仅限过渡视频)**：视频叙事必须围绕核心主体（由参考图锁定）的自然演变展开，严禁主体在过渡中身份突变、替换或消失。
+"""
+
+        # === 处理主体照片 ===
+        print(f"[主体照片检查] 收到 {len(subject_pair)} 张主体照片")
+        has_valid_subject_photos = False
+        valid_subject_paths = []
+
+>>>>>>> 48b5ea9 (submit by lue)
         for i, subject_url in enumerate(subject_pair):
             if subject_url:
                 print(f"  - 主体照片 {i+1}: {subject_url[:100]}...")
                 if subject_url.startswith("data:image"):
+<<<<<<< HEAD
                     # 处理 base64 数据
+=======
+>>>>>>> 48b5ea9 (submit by lue)
                     try:
                         fname = f"subject_{p_type}_{i}_{uuid.uuid4().hex}.png"
                         subject_path = GENERATED_DIR / fname
@@ -1452,7 +1483,10 @@ def refine_prompt():
                     except Exception as e:
                         print(f"    ❌ 处理 base64 主体照片失败: {e}")
                 else:
+<<<<<<< HEAD
                     # 检查 URL 或本地路径的有效性
+=======
+>>>>>>> 48b5ea9 (submit by lue)
                     local_path = _resolve_local_path(subject_url)
                     if local_path and local_path.exists():
                         valid_subject_paths.append(str(local_path))
@@ -1460,6 +1494,7 @@ def refine_prompt():
                         print(f"    ✅ 找到有效主体照片: {local_path.name}")
                     else:
                         print(f"    ⚠️ 主体照片路径无效: {subject_url}")
+<<<<<<< HEAD
         
         print(f"🔍 [主体照片检查结果] 有效主体照片: {len(valid_subject_paths)} 张")
         
@@ -1569,6 +1604,96 @@ def refine_prompt():
 - 照片2 = 第一张照片（照片1）中主体的面部特写
 - 照片4 = 第二张照片（照片3）中主体的面部特写
 - 照片2与照片实际上是同一人，只是状态/角度/年龄不同，然后你需要识别照片2和照片4在各自图片1和图片3中对应的位置，身体形态，穿着等重要元素，并在生成视频指令描述中我也要提到这个主体的面部、衣服、身体形态等特征，谁是主体由谁转换到谁。
+=======
+
+        print(f"[主体照片检查结果] 有效主体照片: {len(valid_subject_paths)} 张")
+        # 如果没有有效主体照片，将使用原始照片作为后续回退，但不在此处处理，逻辑下移。
+
+        # === 处理原始照片 ===
+        temp_images = []
+        for i, photo_url in enumerate(photo_pair):
+            local_path = _resolve_local_path(photo_url)
+            if local_path and local_path.exists():
+                temp_images.append(str(local_path))
+                print(f"  ✅ 原始照片 {i+1}: 使用本地文件 {local_path.name}")
+            else:
+                # 下载远程图片
+                fname = f"temp_{p_type}_{i}_{uuid.uuid4().hex}.jpg"
+                temp_path = GENERATED_DIR / fname
+                if photo_url.startswith('http'):
+                    try:
+                        with requests.get(photo_url, stream=True, timeout=30) as r:
+                            r.raise_for_status()
+                            with open(temp_path, 'wb') as f:
+                                for chunk in r.iter_content(chunk_size=8192):
+                                    f.write(chunk)
+                        temp_images.append(str(temp_path))
+                        print(f"  ✅ 原始照片 {i+1}: 下载远程图片至 {fname}")
+                    except Exception as e:
+                        print(f"  ❌ 原始照片 {i+1} 下载失败: {e}")
+                        return jsonify({"error": f"原始照片 {i+1} 下载失败: {e}"}), 400
+                else:
+                    print(f"  ❌ 原始照片 {i+1} 格式无法识别: {photo_url[:100]}...")
+                    return jsonify({"error": f"原始照片 {i+1} 的 URL 格式无效。"}), 400
+
+        if len(temp_images) == 0:
+            return jsonify({"error": "无法获取任何有效的原始图片。"}), 400
+
+        # === 构建用于分析的图片列表（原始+主体）===
+        all_images_for_analysis = []
+        # 决定最终使用的主体照片路径：优先用户提供的有效主体照，否则回退到原始照片。
+        effective_subject_paths = []
+        if has_valid_subject_photos and len(valid_subject_paths) >= len(temp_images):
+            effective_subject_paths = valid_subject_paths[:len(temp_images)]
+        else:
+            print(f"⚠️ 主体照片不足或无效，将使用原始照片作为主体参考。")
+            effective_subject_paths = temp_images  # 回退到原始照片
+
+        # === 构建 custom_prompt (移除了末尾的半结构化规则) ===
+        if p_type == "static":
+            # 静态视频：第一张原始照片 + 第一张（有效）主体照片
+            all_images_for_analysis = [temp_images[0], effective_subject_paths[0]]
+            # 【修改点】custom_prompt 不再包含 HALF_STRUCTURED_RULES
+            custom_prompt = f"""
+【视频时长】5秒
+【照片关系】照片2是照片1主体的面部特写，用于身份锁定
+
+你是一名专业视频动效设计师。基于场景图（照片1）和面部特征（照片2），设计5秒静态转动态视频指令。
+
+照片描述：{sentence}
+
+【核心要求】：
+1. **主体锁定**：通过照片2面部特征，在照片1中精准识别核心人物，所有动态围绕该主体展开
+
+2. **5秒节奏**：
+- 0-0.5秒：细微预备动作
+- 0.5-4秒：核心动作展开（符合人物气质）
+- 4-5秒：动作收尾与稳定定格
+
+3. 【以下要求原话保留】
+- 禁止人物替换或突变，5秒内主体身份必须绝对一致
+- **动作表情必须自然符合物理规律** 
+- 禁止突兀跳切、瞬间变化，所有动态必须渐进式
+
+4. **输出**：描述5秒内主体的视觉变化过程（含时间节点），≤300字。
+"""
+        else:
+            # 过渡视频：需要至少两张原始照片和对应的主体照
+            if len(temp_images) < 2:
+                return jsonify({"error": "过渡视频（type='transition'）需要至少提供2张原始照片（photo_pair）。"}), 400
+            # 图片顺序：原图1，主体1，原图2，主体2
+            all_images_for_analysis = [
+                temp_images[0],
+                effective_subject_paths[0],
+                temp_images[1],
+                effective_subject_paths[1] if len(effective_subject_paths) > 1 else effective_subject_paths[0]
+            ]
+            # 【修改点】custom_prompt 不再包含 HALF_STRUCTURED_RULES
+            custom_prompt = f"""
+【主体照片说明】：
+- 照片2 = 第一张照片（照片1）中主体的面部特写
+- 照片4 = 第二张照片（照片3）中主体的面部特写
+>>>>>>> 48b5ea9 (submit by lue)
 
 你是一名专业的视频过渡效果设计师。请基于两张完整场景（照片1、3）和对应的面部特写（照片2、4），设计一段5秒时长的主体连贯过渡效果。
 
@@ -1582,7 +1707,11 @@ def refine_prompt():
 - 1-4秒：**核心过渡阶段**，主体姿态/表情/角度从照片2状态向照片4状态自然演变，背景同步渐变。注意设计不得背景突然变换，强调主体动作和背景平滑过渡
 - 4-5秒：过渡完成，主体定格为照片4状态，与尾帧无缝衔接
 
+<<<<<<< HEAD
 【禁止事项】：这些禁止事项我想在生成的指令中原话提到！
+=======
+【禁止事项】：
+>>>>>>> 48b5ea9 (submit by lue)
 ❌ 禁止突然的场景切换或跳切，必须是要主体的转场过渡
 ❌ 禁止主体人物在过渡中突然改变身份或消失
 ❌ 禁止背景与主体动作脱节
@@ -1595,6 +1724,7 @@ def refine_prompt():
 
 输出要求：详细描述5秒内"主体演变+场景过渡"的完整过程，强调主体连贯性，400字以内
 """
+<<<<<<< HEAD
             
             # 调用 analyze_images 分析所有图片
             result = analyze_images(all_images_for_analysis, custom_prompt)
@@ -1645,12 +1775,55 @@ def refine_prompt():
                 }
             })
             
+=======
+
+        # === 调用 analyze_images 生成初步指令 ===
+        print(f"[调用分析] 发送 {len(all_images_for_analysis)} 张图片进行分析...")
+        ai_generated_prompt = analyze_images(all_images_for_analysis, custom_prompt)
+
+        # === 【核心修正】在AI生成的结果后，强制追加半结构化规则 ===
+        if ai_generated_prompt:
+            # 移除AI生成结果可能自带的尾部换行和空格，然后追加固定规则
+            final_prompt = ai_generated_prompt.strip() + "\n\n" + HALF_STRUCTURED_RULES.strip()
+        else:
+            final_prompt = HALF_STRUCTURED_RULES.strip()  # 如果AI生成失败，至少返回规则
+
+        # === 清理临时生成的文件 ===
+        for img_path in temp_images:
+            if img_path.startswith(str(GENERATED_DIR)) and 'temp_' in img_path:
+                try:
+                    os.unlink(img_path)
+                except:
+                    pass
+        for img_path in valid_subject_paths:  # 清理从base64保存的主体照
+            if img_path.startswith(str(GENERATED_DIR)) and 'subject_' in img_path:
+                try:
+                    os.unlink(img_path)
+                except:
+                    pass
+
+        if final_prompt:
+            return jsonify({
+                "prompt": final_prompt,  # 返回合并后的最终指令
+                "subject_photos_status": {
+                    "has_valid_subject_photos": has_valid_subject_photos,
+                    "subject_count": len(valid_subject_paths),
+                    "message": "主体照片已成功处理并用于生成" if has_valid_subject_photos else "使用原始照片作为主体参考"
+                }
+            })
+        else:
+            return jsonify({"error": "图像分析服务未能返回有效指令。"}), 500
+
+>>>>>>> 48b5ea9 (submit by lue)
     except Exception as e:
         print("refine-prompt error:", e)
         return jsonify({"error": str(e)}), 500
 
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 48b5ea9 (submit by lue)
 @app.route('/video-status/<task_id>', methods=['GET'])
 def video_status(task_id):
     task = video_tasks.get(task_id)

@@ -1,3 +1,9 @@
+<<<<<<< HEAD
 2026/02/24-00:11:16.792 37e468 Reusing MANIFEST /Users/starry/Documents/sss_files/FDUVIS/storytelling/story-prototype/playwright_profile/Default/GCM Store/Encryption/MANIFEST-000001
 2026/02/24-00:11:16.797 37e468 Recovering log #3
 2026/02/24-00:11:16.797 37e468 Reusing old log /Users/starry/Documents/sss_files/FDUVIS/storytelling/story-prototype/playwright_profile/Default/GCM Store/Encryption/000003.log 
+=======
+2026/02/25-21:52:21.249 374c Reusing MANIFEST C:\Users\Administrator\Desktop\story-prototype-main\playwright_profile\Default\GCM Store\Encryption/MANIFEST-000001
+2026/02/25-21:52:21.249 374c Recovering log #3
+2026/02/25-21:52:21.249 374c Reusing old log C:\Users\Administrator\Desktop\story-prototype-main\playwright_profile\Default\GCM Store\Encryption/000003.log 
+>>>>>>> 48b5ea9 (submit by lue)
