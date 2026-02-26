@@ -1,9 +1,0 @@
-<<<<<<< HEAD
-2026/02/24-00:11:18.959 37e465 Reusing MANIFEST /Users/starry/Documents/sss_files/FDUVIS/storytelling/story-prototype/playwright_profile/Default/IndexedDB/https_jimeng.jianying.com_0.indexeddb.leveldb/MANIFEST-000001
-2026/02/24-00:11:18.959 37e465 Recovering log #3
-2026/02/24-00:11:18.961 37e465 Reusing old log /Users/starry/Documents/sss_files/FDUVIS/storytelling/story-prototype/playwright_profile/Default/IndexedDB/https_jimeng.jianying.com_0.indexeddb.leveldb/000003.log 
-=======
-2026/02/25-21:52:23.558 4150 Reusing MANIFEST C:\Users\Administrator\Desktop\story-prototype-main\playwright_profile\Default\IndexedDB\https_jimeng.jianying.com_0.indexeddb.leveldb/MANIFEST-000001
-2026/02/25-21:52:23.559 4150 Recovering log #3
-2026/02/25-21:52:23.559 4150 Reusing old log C:\Users\Administrator\Desktop\story-prototype-main\playwright_profile\Default\IndexedDB\https_jimeng.jianying.com_0.indexeddb.leveldb/000003.log 
->>>>>>> 48b5ea9 (submit by lue)
