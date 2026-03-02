@@ -921,10 +921,10 @@ def analyze_photo_style():
         style_tags = {}
 
         style_analysis_system = (
-            "You are a professional photography style analyst. "
-            "Analyze the overall visual style of the provided photos and output a concise English style description (40-60 words). "
-            "Cover these 6 dimensions: color tone, exposure/contrast, texture/film grain, lighting, shooting style, and overall mood. "
-            "Output ONLY the descriptive phrases separated by commas. No explanations, no JSON, no extra text."
+            "你是一位专业的摄影风格分析师。"
+            "请分析所提供照片的整体视觉风格，输出简洁的中文风格描述（40-60字）。"
+            "涵盖以下6个维度：色调、曝光/对比度、质感/颗粒感、光线、拍摄风格、整体情绪氛围。"
+            "只输出用顿号或逗号分隔的描述短语，不要解释、不要JSON、不要多余文字。"
         )
 
         for sg_item in subgroups:
@@ -952,10 +952,9 @@ def analyze_photo_style():
                     tmp_paths.append(str(tmp_path))
 
                 style_prompt = (
-                    "Please analyze the visual style of these photos. "
-                    "Output 40-60 English words covering: color tone, exposure/contrast, "
-                    "texture/film grain, lighting quality, shooting style, and mood. "
-                    "Use comma-separated phrases only."
+                    "请分析这些照片的视觉风格。"
+                    "用40-60个字描述：色调、曝光/对比度、质感/颗粒感、光线质量、拍摄风格和情绪氛围。"
+                    "只输出用顿号或逗号分隔的短语。"
                 )
 
                 result = analyze_images(tmp_paths, prompt=style_prompt, system_prompt=style_analysis_system)
@@ -1640,9 +1639,16 @@ def analyze_characters():
         characters = []
         global_face_idx = 0
         
-        # 使用更准确的人脸检测器配置
-        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-        
+        # 使用 OpenCV DNN ResNet-SSD 人脸检测器
+        model_dir = os.path.join(os.path.dirname(__file__), 'models')
+        prototxt_path = os.path.join(model_dir, 'deploy.prototxt')
+        caffemodel_path = os.path.join(model_dir, 'res10_300x300_ssd_iter_140000.caffemodel')
+
+        if not os.path.exists(prototxt_path) or not os.path.exists(caffemodel_path):
+            return jsonify({"error": "人脸检测模型文件不存在，请先运行 python download_face_model.py"}), 500
+
+        net = cv2.dnn.readNetFromCaffe(prototxt_path, caffemodel_path)
+
         for p_idx, photo_info in enumerate(photos):
             if isinstance(photo_info, dict):
                 base64_data = photo_info.get('base64', '')
@@ -1681,20 +1687,33 @@ def analyze_characters():
                     new_height = int(height * scale)
                     img = cv2.resize(img, (new_width, new_height))
                     print(f"调整图片 {p_idx} 尺寸为: {new_width}x{new_height}")
-                
-                # 转换为灰度图
-                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                
-                # 使用更严格的参数检测人脸
-                faces = face_cascade.detectMultiScale(
-                    gray, 
-                    scaleFactor=1.1,
-                    minNeighbors=8,
-                    minSize=(50, 50),
-                    maxSize=(300, 300),
-                    flags=cv2.CASCADE_SCALE_IMAGE
+
+                height, width = img.shape[:2]
+
+                # 使用 DNN 检测人脸
+                blob = cv2.dnn.blobFromImage(
+                    cv2.resize(img, (300, 300)), 1.0, (300, 300),
+                    (104.0, 177.0, 123.0)
                 )
-                
+                net.setInput(blob)
+                detections = net.forward()
+
+                # 置信度阈值：0.4（可调，越高越严格，减少误检；越低越宽松，减少漏检）
+                CONFIDENCE_THRESHOLD = 0.4
+
+                faces = []
+                for i in range(detections.shape[2]):
+                    confidence = detections[0, 0, i, 2]
+                    if confidence < CONFIDENCE_THRESHOLD:
+                        continue
+                    box = detections[0, 0, i, 3:7] * [width, height, width, height]
+                    x1, y1, x2, y2 = box.astype(int)
+                    x1, y1 = max(0, x1), max(0, y1)
+                    x2, y2 = min(width, x2), min(height, y2)
+                    w, h = x2 - x1, y2 - y1
+                    if w > 20 and h > 20:
+                        faces.append((x1, y1, w, h))
+
                 print(f"在图片 {p_idx} 中检测到 {len(faces)} 个候选区域")
                 
                 valid_faces = []

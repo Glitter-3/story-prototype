@@ -914,9 +914,10 @@
               v-if="activeSubgroup.stage4.addedSentenceIndices.length > 0"
               class="control-btn"
               @click="generateNewImagesFromNarrative"
+              :disabled="isAnalyzingStyle || isGeneratingImages"
               style="width:100%; background:linear-gradient(135deg,#c3c9e8,#d4c5e0); color:white; border-radius:6px; font-size:14px; font-weight:bold;"
             >
-              为新增回忆生成图片
+              {{ isAnalyzingStyle ? '🎨 分析风格中...' : '为新增回忆生成图片' }}
             </button>
             <button
               class="control-btn"
@@ -3314,11 +3315,42 @@ export default {
         const base64Photos = await Promise.all(
           this.photos.map(photo => this.convertToBase64(photo.file))
         );
-        
-        // 1. 获取新故事的分镜 Prompts
+
+        // 1. 风格分析（同 Stage3 逻辑，复用 styleTagsMap）
+        this.isAnalyzingStyle = true;
+        try {
+          const subgroupsPayload = [];
+          for (let gIdx = 0; gIdx < this.photoGroups.length; gIdx++) {
+            const group = this.photoGroups[gIdx];
+            for (let sgIdx = 0; sgIdx < (group.subgroups || []).length; sgIdx++) {
+              const subgroup = group.subgroups[sgIdx];
+              const photos_b64 = (subgroup.photoIndices || [])
+                .map(idx => base64Photos[idx])
+                .filter(Boolean);
+              subgroupsPayload.push({
+                group_index: gIdx,
+                subgroup_index: sgIdx,
+                photos: photos_b64
+              });
+            }
+          }
+          const styleResp = await axios.post('http://127.0.0.1:5000/analyze-photo-style', {
+            subgroups: subgroupsPayload
+          }, { timeout: 120000 });
+          this.styleTagsMap = styleResp.data?.style_tags || {};
+          console.log('[Stage4 风格分析] 结果:', this.styleTagsMap);
+        } catch (styleErr) {
+          console.warn('[Stage4 风格分析] 失败，跳过风格约束:', styleErr);
+          this.styleTagsMap = {};
+        } finally {
+          this.isAnalyzingStyle = false;
+        }
+
+        // 2. 获取新故事的分镜 Prompts
         const response = await axios.post('http://127.0.0.1:5000/generate-prompts', {
           photos: base64Photos,
           narrative: narrative,
+          style_tags: this.styleTagsMap,
           // 【新增】告知后端这是 subgroup 模式
           subgroup_context: this.activeSubgroup || null
         });
