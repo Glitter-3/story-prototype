@@ -2984,9 +2984,22 @@ export default {
         );
 
 
-        const base64Photos = await Promise.all(
-          this.photos.map(photo => this.convertToBase64(photo.file))
-        );
+        // 【Bug1修复】只传当前 subgroup 对应的原图，而非全量 this.photos
+        let originalPhotosForQA = [];
+        if (this.activeSubgroup) {
+          const { groupIdx, subgroupIdx } = this.activeSubgroup;
+          const subgroupPhotoIndices =
+            this.photoGroups[groupIdx]?.subgroups?.[subgroupIdx]?.photo_indices || [];
+          originalPhotosForQA = (await Promise.all(
+            subgroupPhotoIndices.map(idx => this.photos[idx]?.file
+              ? this.convertToBase64(this.photos[idx].file)
+              : Promise.resolve(null))
+          )).filter(Boolean);
+        } else {
+          originalPhotosForQA = await Promise.all(
+            this.photos.map(photo => this.convertToBase64(photo.file))
+          );
+        }
         const aiPhotoURLs = aiPhotoBase64s.filter(Boolean);
 
         if (aiPhotoURLs.length === 0) {
@@ -3009,9 +3022,9 @@ export default {
         }
 
         const response = await axios.post('http://127.0.0.1:5000/generate-stage4-questions', {
-          original_photos: base64Photos,
+          original_photos: originalPhotosForQA,
           ai_photos_urls: aiPhotoURLs,
-          narrative: currentNarrative, 
+          narrative: currentNarrative,
           // 传入 subgroup 信息，让后端知道只针对该 subgroup 提问
           subgroup_context: this.activeSubgroup ? {
             group_idx: this.activeSubgroup.groupIdx,
@@ -3407,13 +3420,61 @@ export default {
           }
         });
         
-        // 4. 生成不可复用的新图（原有逻辑保持不变）
+        // 4. 生成不可复用的新图
         if (toGenerate.length > 0) {
           console.log(`[Smart Reuse] 需新生成 ${toGenerate.length} 张图片...`);
-          const payloadToSend = toGenerate.map(item => ({
-            ...item,
-            photo: base64Photos
-          }));
+
+          // 辅助：strip base64 data URI 前缀
+          const stripDataPrefix = (s) =>
+            s && s.startsWith('data:image') ? s.split(',', 2)[1] : s;
+
+          const payloadToSend = toGenerate.map(item => {
+            const gIdx = item.group_index ?? this.activeSubgroup?.groupIdx ?? null;
+            const sgIdx = item.subgroup_index ?? this.activeSubgroup?.subgroupIdx ?? null;
+
+            // 风格参考图：取该 subgroup 第一张原图
+            const sgPhotoIndices = (gIdx != null && sgIdx != null)
+              ? (this.photoGroups[gIdx]?.subgroups?.[sgIdx]?.photo_indices || [])
+              : [];
+            const stylePhotoRaw = sgPhotoIndices.length > 0
+              ? base64Photos[sgPhotoIndices[0]]
+              : (base64Photos[0] || null);
+            const stylePhoto = stylePhotoRaw ? stripDataPrefix(stylePhotoRaw) : null;
+
+            // 主体参考图：取该 subgroup 对应的角色头像
+            const subgroupPhotoIndicesSet = new Set(sgPhotoIndices);
+            let characterAvatars = this.characters
+              .filter(c => c.avatar && subgroupPhotoIndicesSet.has(c.photoIndex))
+              .map(c => stripDataPrefix(c.avatar))
+              .filter(Boolean)
+              .slice(0, 4);
+
+            if (characterAvatars.length === 0 && this.characters.length > 0) {
+              // 兜底：全局角色头像
+              characterAvatars = this.characters
+                .map(c => c.avatar ? stripDataPrefix(c.avatar) : null)
+                .filter(Boolean)
+                .slice(0, 4);
+            }
+
+            // 内容参考图：该 subgroup 的原图
+            const refPhotos = sgPhotoIndices
+              .slice(0, 4)
+              .map(idx => base64Photos[idx])
+              .filter(Boolean);
+            const finalPhotos = refPhotos.length > 0 ? refPhotos : base64Photos.slice(0, 1);
+
+            return {
+              index: item.index,
+              sentence: item.sentence,
+              prompt: item.prompt,
+              group_index: gIdx,
+              subgroup_index: sgIdx,
+              photo: finalPhotos,
+              character_avatars: characterAvatars,
+              style_photo: stylePhoto
+            };
+          });
           
           const genResp = await axios.post('http://127.0.0.1:5000/generate-images', {
             sentence_pairs: payloadToSend

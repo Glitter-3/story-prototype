@@ -1164,10 +1164,10 @@ def generate_stage4_questions():
     """
     try:
         data = request.get_json()
-        # original_photos 是 base64 列表 (前端传来的)
-        original_photos = data.get('original_photos', []) 
-        # ai_photos_urls 是 URL 列表 (前端传来的, 可能是 localhost)
-        ai_photos_urls = data.get('ai_photos_urls', [])   
+        # original_photos 是 base64 列表（前端已过滤为当前 subgroup 的原图）
+        original_photos = data.get('original_photos', [])
+        # ai_photos_urls 是 URL 列表（前端已过滤为当前 subgroup 的 AI 图）
+        ai_photos_urls = data.get('ai_photos_urls', [])
         narrative = data.get('narrative', '')
 
         processed_ai_images = []
