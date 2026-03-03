@@ -1,19 +1,12 @@
-2026/03/02-18:44:39.891 5c6c3f Reusing MANIFEST /Users/starry/Documents/sss_files/FDUVIS/storytelling/story-prototype/playwright_profile/Default/Local Storage/leveldb/MANIFEST-000001
-2026/03/02-18:44:39.893 5c6c3f Recovering log #12
-2026/03/02-18:44:39.894 5c6c3f Level-0 table #15: started
-2026/03/02-18:44:39.898 5c6c3f Level-0 table #15: 23137 bytes OK
-2026/03/02-18:44:39.899 5c6c3f Recovering log #61
-2026/03/02-18:44:39.901 5c6c3f Reusing old log /Users/starry/Documents/sss_files/FDUVIS/storytelling/story-prototype/playwright_profile/Default/Local Storage/leveldb/000061.log 
-2026/03/02-18:44:39.905 5c6c3f Delete type=0 #12
-2026/03/02-18:44:55.477 5c6c43 Level-0 table #63: started
-2026/03/02-18:44:55.486 5c6c43 Level-0 table #63: 156503 bytes OK
-2026/03/02-18:44:55.490 5c6c43 Delete type=0 #61
-2026/03/02-18:44:55.492 5c6c3f Compacting 4@0 + 1@1 files
-2026/03/02-18:44:55.496 5c6c3f Generated table #64@0: 53 keys, 193666 bytes
-2026/03/02-18:44:55.496 5c6c3f Compacted 4@0 + 1@1 files => 193666 bytes
-2026/03/02-18:44:55.497 5c6c3f compacted to: files[ 0 1 1 0 0 0 0 ]
-2026/03/02-18:44:55.497 5c6c3f Delete type=2 #63
-2026/03/02-18:44:55.497 5c6c3f Delete type=2 #15
-2026/03/02-18:44:55.497 5c6c3f Delete type=2 #7
-2026/03/02-18:44:55.497 5c6c3f Delete type=2 #13
-2026/03/02-18:44:55.497 5c6c3f Delete type=2 #10
+2026/03/03-11:14:19.276 30c23 Reusing MANIFEST /Users/starry/Documents/sss_files/FDUVIS/storytelling/story-prototype/playwright_profile/Default/Local Storage/leveldb/MANIFEST-000001
+2026/03/03-11:14:19.278 30c23 Recovering log #62
+2026/03/03-11:14:19.278 30c23 Reusing old log /Users/starry/Documents/sss_files/FDUVIS/storytelling/story-prototype/playwright_profile/Default/Local Storage/leveldb/000062.log 
+2026/03/03-11:18:50.433 30c27 Level-0 table #67: started
+2026/03/03-11:18:50.438 30c27 Level-0 table #67: 39318 bytes OK
+2026/03/03-11:18:50.441 30c27 Delete type=0 #62
+2026/03/03-11:21:22.269 30c27 Level-0 table #69: started
+2026/03/03-11:21:22.272 30c27 Level-0 table #69: 36172 bytes OK
+2026/03/03-11:21:22.274 30c27 Delete type=0 #66
+2026/03/03-11:24:54.928 30c27 Level-0 table #71: started
+2026/03/03-11:24:54.932 30c27 Level-0 table #71: 53188 bytes OK
+2026/03/03-11:24:54.934 30c27 Delete type=0 #68

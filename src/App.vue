@@ -53,15 +53,16 @@
                 <button class="control-btn" @click="addPhoto">➕ 添加照片</button>
                 <button class="control-btn" @click="confirmUpload">确认上传图片</button>
                 
-                <!-- 新增角色识别按钮 -->
-                <button 
-                  class="control-btn" 
-                  @click="identifyCharacters" 
+                <!-- 新增角色识别按钮（暂时隐藏，如需恢复请取消注释）
+                <button
+                  class="control-btn"
+                  @click="identifyCharacters"
                   :disabled="photos.length === 0 || isAnalyzingCharacters"
                   style="background: #f0f2f8; border-color: #7c83b9; color: #7c83b9;"
                 >
                   {{ isAnalyzingCharacters ? '正在识别...' : '👤角色识别' }}
                 </button>
+                -->
 
                 <button class="control-btn" @click="groupPhotosByTime" :disabled="photos.length === 0 || groupingInProgress">
                   {{ groupingInProgress ? '分组中…' : '照片分组' }}
@@ -1007,7 +1008,8 @@
 
       </aside>
 
-      <!-- ==================== 角色面板 (Character Sidebar) ==================== -->
+      <!-- ==================== 角色面板 (Character Sidebar) ====================
+           暂时隐藏，如需恢复请取消注释
       <aside class="character-sidebar" :class="{ collapsed: isCharacterPanelCollapsed }" v-if="currentStage === 1" style="width: 300px; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); display: flex; flex-direction: column; flex-shrink: 0;">
         <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
           <h3 style="font-size: 16px; color: #333;">👥角色面板</h3>
@@ -1015,36 +1017,34 @@
             {{ isCharacterPanelCollapsed ? '展开' : '收起' }}
           </button>
         </div>
-        
+
         <div v-show="!isCharacterPanelCollapsed" class="character-content" style="flex: 1; overflow-y: auto;">
-          <!-- 角色列表 -->
           <div class="character-list">
-            <div 
-              v-for="char in characters" 
-              :key="char.id" 
+            <div
+              v-for="char in characters"
+              :key="char.id"
               @click="selectedCharacterId = char.id"
               style="display: flex; align-items: center; gap: 12px; padding: 10px; border: 1px solid #eee; border-radius: 8px; margin-bottom: 10px; cursor: pointer;"
               :style="selectedCharacterId === char.id ? 'border-color: #7c83b9; background: #f0f2f8;' : ''"
             >
-              <!-- 角色头像 -->
               <div v-if="char.avatar" class="character-avatar-large" style="width: 50px; height: 50px; border-radius: 50%; overflow: hidden; border: 2px solid #7c83b9; flex-shrink: 0;">
-                <img 
-                  :src="char.avatar" 
-                  style="width: 100%; height: 100%; object-fit: cover;" 
+                <img
+                  :src="char.avatar"
+                  style="width: 100%; height: 100%; object-fit: cover;"
                   alt="角色头像"
-                  @error="() => { char.avatar = '' }"  
+                  @error="() => { char.avatar = '' }"
                 />
               </div>
               <div v-else class="character-avatar-large-placeholder" style="width: 50px; height: 50px; border-radius: 50%; background: #f0f0f0; display: flex; align-items: center; justify-content: center; border: 2px solid #7c83b9; flex-shrink: 0;">
                 <span style="font-size: 20px;">👤</span>
               </div>
-              
+
               <div style="flex: 1; min-width: 0;">
                 <strong style="font-size: 14px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                   {{ char.name || '未命名' }}
                 </strong>
-                
-                <span 
+
+                <span
                   v-if="shouldShowTag(char)"
                   style="font-size: 11px; background: #e8ebf7; color: #7c83b9; padding: 2px 8px; border-radius: 10px; margin-top: 4px; display: inline-block;"
                 >
@@ -1055,10 +1055,7 @@
             </div>
           </div>
 
-          <!-- 选中角色详情编辑 -->
           <div v-if="activeCharacter" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee;">
-            
-            <!-- 角色大头像 -->
             <div style="text-align: center; margin-bottom: 15px;">
               <div v-if="activeCharacter.avatar" class="character-avatar-large" style="width: 80px; height: 80px; border-radius: 50%; overflow: hidden; margin: 0 auto;">
                 <img :src="activeCharacter.avatar" style="width: 100%; height: 100%; object-fit: cover;" alt="角色大头像" />
@@ -1067,7 +1064,7 @@
                 <span style="font-size: 24px;">👤</span>
               </div>
             </div>
-            
+
             <div style="margin-bottom: 12px;">
               <label style="font-size: 12px; color: #666; display: block; margin-bottom: 4px;">人物</label>
               <input v-model="activeCharacter.name" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" />
@@ -1083,12 +1080,12 @@
                 <option value="同事">同事</option>
                 <option value="其他">其他...</option>
               </select>
-              
-              <input 
-                v-if="activeCharacter.relationType === '其他'" 
-                v-model="activeCharacter.customRelation" 
-                placeholder="请填写具体关系" 
-                style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" 
+
+              <input
+                v-if="activeCharacter.relationType === '其他'"
+                v-model="activeCharacter.customRelation"
+                placeholder="请填写具体关系"
+                style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
               />
             </div>
 
@@ -1098,6 +1095,7 @@
           </div>
         </div>
       </aside>
+      ==================== 角色面板结束 ==================== -->
     </div>
 
     <!-- ==================== 图片放大预览模态框 ==================== -->
@@ -1214,10 +1212,10 @@ export default {
       userAgent: navigator.userAgent,
       screenResolution: `${screen.width}x${screen.height}`,
 
-      // === 新增角色相关数据 ===
-      characters: [], // 角色列表
+      // === 新增角色相关数据（UI面板已隐藏，但数据字段保留供内部逻辑使用）===
+      characters: [], // 角色列表（角色面板UI已隐藏，但confirmGenerateImages等方法仍依赖此字段）
       selectedCharacterId: null, // 当前选中的角色ID
-      isCharacterPanelCollapsed: false, // 角色面板是否折叠
+      // isCharacterPanelCollapsed: false, // 角色面板是否折叠（UI已隐藏）
       isAnalyzingCharacters: false, // 是否正在识别人物
 
       // === 原有状态 ===
@@ -1298,10 +1296,10 @@ export default {
     }
   },
   computed: {
-    activeCharacter() {
-      return this.characters.find(c => c.id === this.selectedCharacterId);
-    },
-
+    // activeCharacter（角色面板相关，暂时隐藏，如需恢复请取消注释）
+    // activeCharacter() {
+    //   return this.characters.find(c => c.id === this.selectedCharacterId);
+    // },
     // 筛选当前 activeSubgroup 的 sentencePairs
     filteredSentencePairs() {
       if (!this.activeSubgroup) return [];
@@ -1423,81 +1421,82 @@ export default {
     console.log(`[Log] Session started: ${this.sessionId}`);
   },
   methods: {
-    shouldShowTag(char) {
-      // 1. 如果没选关系，不显示
-      if (!char.relationType) return false;
-      // 2. 如果选了"其他"，但还没填具体内容，不显示
-      if (char.relationType === '其他' && !char.customRelation) return false;
-      // 3. 其他情况（选了自己、家人等）正常显示
-      return true;
-    },
+    // shouldShowTag（角色面板相关，暂时隐藏，如需恢复请取消注释）
+    // shouldShowTag(char) {
+    //   // 1. 如果没选关系，不显示
+    //   if (!char.relationType) return false;
+    //   // 2. 如果选了"其他"，但还没填具体内容，不显示
+    //   if (char.relationType === '其他' && !char.customRelation) return false;
+    //   // 3. 其他情况（选了自己、家人等）正常显示
+    //   return true;
+    // },
     // ✅ [修改 C.5] 新增正则转义辅助函数
     // 【新增】正则转义辅助函数
     escapeRegExp(string) {
       return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
     },
-        // 角色识别方法
-    async identifyCharacters() {
-      if (this.photos.length === 0) {
-        alert("请先添加并确认上传图片！");
-        return;
-      }
-      
-      this.isAnalyzingCharacters = true;
-      
-      try {
-        // 使用 confirmUpload 相同的逻辑
-        const photoInfos = await Promise.all(
-          this.photos.map(async (p, index) => {
-            if (!p.file) {
-              console.error(`图片 ${index} 没有文件对象`);
-              return null;
-            }
-            
-            const base64 = await this.convertToBase64(p.file);
-            return {
-              url: p.url,
-              index: index,
-              base64: base64
-            };
-          })
-        );
-        
-        const validPhotoInfos = photoInfos.filter(info => info !== null);
-        
-        if (validPhotoInfos.length === 0) {
-          alert("没有有效的图片可以处理");
-          return;
-        }
-        
-        const resp = await axios.post('http://127.0.0.1:5000/analyze-characters', {
-          photos: validPhotoInfos
-        });
-        
-        if (resp.data.characters) {
-          this.characters = resp.data.characters.map(char => ({
-            ...char,
-            relationType: char.relationType || "",
-            customRelation: char.customRelation || "",
-            photoIndex: char.photoIndex || 0,
-            photoUrl: char.photoUrl || this.photos[char.photoIndex || 0]?.url || "",
-            aiPhotoUrls: char.aiPhotoUrls || []
-          }));
-          
-          if (this.characters.length > 0) {
-            this.selectedCharacterId = this.characters[0].id;
-          }
-          alert(`识别完成！共发现 ${this.characters.length} 处人物面部。`);
-        } else {
-          alert("未能识别到清晰的人物面部。");
-        }
-      } catch (err) {
-        console.error("角色分析失败:", err);
-        alert("识别服务连接失败，请检查后端运行状态。");
-      } finally {
-        this.isAnalyzingCharacters = false;
-      }
-    },
+    // identifyCharacters（角色面板相关，暂时隐藏，如需恢复请取消注释）
+    // async identifyCharacters() {
+    //   if (this.photos.length === 0) {
+    //     alert("请先添加并确认上传图片！");
+    //     return;
+    //   }
+    //
+    //   this.isAnalyzingCharacters = true;
+    //
+    //   try {
+    //     // 使用 confirmUpload 相同的逻辑
+    //     const photoInfos = await Promise.all(
+    //       this.photos.map(async (p, index) => {
+    //         if (!p.file) {
+    //           console.error(`图片 ${index} 没有文件对象`);
+    //           return null;
+    //         }
+    //
+    //         const base64 = await this.convertToBase64(p.file);
+    //         return {
+    //           url: p.url,
+    //           index: index,
+    //           base64: base64
+    //         };
+    //       })
+    //     );
+    //
+    //     const validPhotoInfos = photoInfos.filter(info => info !== null);
+    //
+    //     if (validPhotoInfos.length === 0) {
+    //       alert("没有有效的图片可以处理");
+    //       return;
+    //     }
+    //
+    //     const resp = await axios.post('http://127.0.0.1:5000/analyze-characters', {
+    //       photos: validPhotoInfos
+    //     });
+    //
+    //     if (resp.data.characters) {
+    //       this.characters = resp.data.characters.map(char => ({
+    //         ...char,
+    //         relationType: char.relationType || "",
+    //         customRelation: char.customRelation || "",
+    //         photoIndex: char.photoIndex || 0,
+    //         photoUrl: char.photoUrl || this.photos[char.photoIndex || 0]?.url || "",
+    //         aiPhotoUrls: char.aiPhotoUrls || []
+    //       }));
+    //
+    //       if (this.characters.length > 0) {
+    //         this.selectedCharacterId = this.characters[0].id;
+    //       }
+    //       alert(`识别完成！共发现 ${this.characters.length} 处人物面部。`);
+    //     } else {
+    //       alert("未能识别到清晰的人物面部。");
+    //     }
+    //   } catch (err) {
+    //     console.error("角色分析失败:", err);
+    //     alert("识别服务连接失败，请检查后端运行状态。");
+    //   } finally {
+    //     this.isAnalyzingCharacters = false;
+    //   }
+    // },
 
 
 
@@ -1543,25 +1542,25 @@ export default {
         const resp = await axios.post('http://127.0.0.1:5000/analyze-characters', {
           photos: validPhotoInfos
         });
-        
-        // 4. 将识别结果注入角色面板
-        if (resp.data.characters) {
-          this.characters = resp.data.characters.map(char => ({
-            ...char,
-            relationType: char.relationType || "",
-            customRelation: char.customRelation || "",
-            photoIndex: char.photoIndex || 0,
-            photoUrl: char.photoUrl || this.photos[char.photoIndex || 0]?.url || "",
-            aiPhotoUrls: char.aiPhotoUrls || []
-          }));
-          
-          if (this.characters.length > 0) {
-            this.selectedCharacterId = this.characters[0].id;
-          }
-          alert(`人物识别完成！共发现 ${this.characters.length} 个角色。`);
-        } else {
-          alert("未能识别到清晰的人物面部。");
-        }
+
+        // 4. 将识别结果注入角色面板（角色面板暂时隐藏，如需恢复请取消注释）
+        // if (resp.data.characters) {
+        //   this.characters = resp.data.characters.map(char => ({
+        //     ...char,
+        //     relationType: char.relationType || "",
+        //     customRelation: char.customRelation || "",
+        //     photoIndex: char.photoIndex || 0,
+        //     photoUrl: char.photoUrl || this.photos[char.photoIndex || 0]?.url || "",
+        //     aiPhotoUrls: char.aiPhotoUrls || []
+        //   }));
+        //
+        //   if (this.characters.length > 0) {
+        //     this.selectedCharacterId = this.characters[0].id;
+        //   }
+        //   alert(`人物识别完成！共发现 ${this.characters.length} 个角色。`);
+        // } else {
+        //   alert("未能识别到清晰的人物面部。");
+        // }
       } catch (err) {
         console.error("角色分析请求失败:", err);
         alert("人物识别服务异常，请检查后端 Python 终端报错信息。");
