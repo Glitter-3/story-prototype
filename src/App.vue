@@ -4025,7 +4025,7 @@ export default {
 
     // 5秒后开始轮询（给服务器启动时间）
     setTimeout(() => {
-        this.startVideoPolling(taskId, allPhotosUrls, videoSequences);
+        this.startVideoPolling(taskId, flatPhotos, videoSequences);
     }, 5000);
 
   } catch (err) {
@@ -4036,7 +4036,7 @@ export default {
   }
 },
 
-startVideoPolling(taskId, allPhotosUrls, videoSequences) {
+startVideoPolling(taskId, flatPhotos, videoSequences) {
   console.log('[Stage5] 开始轮询视频任务状态, taskId:', taskId);
 
   const MAX_POLL = 360; // 最多30分钟（每5秒一次）

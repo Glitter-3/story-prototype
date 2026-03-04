@@ -1862,18 +1862,55 @@ def _run_video_generation_task(task_id, photo_urls, prompts):
         video_output_dir.mkdir(parents=True, exist_ok=True)
         generated_video_path = video_output_dir / "generated_video.mp4"
 
-        # 调用命令行生成
+        # ★ 生成前先清空旧片段，防止旧文件混入新结果
+        import glob as _glob
+        for old_seg in _glob.glob(str(video_output_dir / "generated_video_*.mp4")):
+            try:
+                os.remove(old_seg)
+            except Exception:
+                pass
+        if generated_video_path.exists():
+            try:
+                os.remove(generated_video_path)
+            except Exception:
+                pass
+        print(f"[video task {task_id}] 已清空旧视频文件，开始调用 generate.py")
+
+        # 调用命令行生成（不用 check=True，避免 ffmpeg 拼接失败时整体中断）
         cmd = ["python", "generate.py", "--photos", *local_paths, "--prompts", *[str(p) for p in prompts]]
-        subprocess.run(cmd, check=True, cwd=os.path.dirname(__file__))
+        ret = subprocess.run(cmd, cwd=os.path.dirname(__file__))
+        if ret.returncode != 0:
+            print(f"[video task {task_id}] generate.py 退出码={ret.returncode}，尝试收集已生成片段")
 
         # 将生成好的视频复制到 static/generated 并使用唯一文件名
         out_name = f"final_{uuid.uuid4().hex}.mp4"
         out_path = GENERATED_DIR / out_name
-        if generated_video_path.exists():
+
+        if generated_video_path.exists() and generated_video_path.stat().st_size > 0:
+            # generate.py 已完整拼接好
             shutil.copy2(generated_video_path, out_path)
-            video_url = f"{BACKEND_BASE}/static/generated/{out_name}"
+            print(f"[video task {task_id}] 使用 generate.py 输出的合并视频")
         else:
-            raise FileNotFoundError(f"generate.py 未输出视频文件: {generated_video_path}")
+            # generate.py 拼接失败，收集片段自行拼接
+            segments = sorted(_glob.glob(str(video_output_dir / "generated_video_*.mp4")))
+            if not segments:
+                raise FileNotFoundError(f"generate.py 未输出任何视频文件，路径: {video_output_dir}")
+            print(f"[video task {task_id}] 收集到 {len(segments)} 个片段，开始拼接")
+            if len(segments) == 1:
+                shutil.copy2(segments[0], out_path)
+            else:
+                list_file = video_output_dir / "concat_list.txt"
+                with open(list_file, "w", encoding="utf-8") as f:
+                    for seg in segments:
+                        f.write(f"file '{os.path.abspath(seg)}'\n")
+                concat_cmd = [
+                    "ffmpeg", "-f", "concat", "-safe", "0",
+                    "-i", str(list_file), "-c", "copy", "-y", str(out_path)
+                ]
+                subprocess.run(concat_cmd, check=True)
+                list_file.unlink(missing_ok=True)
+
+        video_url = f"{BACKEND_BASE}/static/generated/{out_name}"
 
         video_tasks[task_id].update({"status": "success", "videoUrl": video_url})
 
