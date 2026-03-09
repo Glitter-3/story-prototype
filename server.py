@@ -1813,6 +1813,103 @@ def analyze_characters():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+@app.route('/generate-story-captions', methods=['POST'])
+def generate_story_captions():
+    """
+    Stage 5: 为图文故事时间轴生成每张照片对应的说明文字
+    请求体:
+      {
+        "narrative": "该subgroup的最终叙述文本",
+        "photo_count": 3,
+        "group_name": "青春期",
+        "subgroup_name": "高中时代",
+        "photo_types": ["original", "original", "ai"]  // 可选，帮助模型了解照片性质
+      }
+    返回:
+      { "captions": ["第1段文字", "第2段文字", "第3段文字"] }
+    """
+    try:
+        data = request.get_json()
+        narrative = data.get('narrative', '').strip()
+        photo_count = int(data.get('photo_count', 1))
+        group_name = data.get('group_name', '')
+        subgroup_name = data.get('subgroup_name', '')
+        photo_types = data.get('photo_types', [])  # optional list of "original"/"ai"
+
+        if not narrative or photo_count < 1:
+            return jsonify({"error": "narrative and photo_count are required"}), 400
+
+        type_hint = ''
+        if photo_types:
+            type_desc = []
+            for i, t in enumerate(photo_types[:photo_count]):
+                label = '原始照片' if t == 'original' else 'AI生成照片'
+                type_desc.append(f'第{i+1}张：{label}')
+            type_hint = '\n照片类型信息（供参考）：\n' + '\n'.join(type_desc)
+
+        system_prompt = """你是一位擅长生活叙事的文字编辑。
+你的任务是：根据用户提供的一段叙事文本，将其拆分成若干段小文字，每段文字对应一张照片，用于图文混排的时间轴展示。
+
+要求：
+1. 严格按照照片数量拆分，输出的段落数必须与照片数量完全一致
+2. 每段文字简洁、有温度，字数在30-80字之间
+3. 文字要能与该时期的照片意境相符
+4. 各段之间内容不重复，共同覆盖整段叙事的核心内容
+5. 只输出一个JSON数组，格式如下，不要有任何其他内容：
+["第一段文字", "第二段文字", ...]"""
+
+        prompt = f"""请将以下叙事文本拆分为 {photo_count} 段，每段对应一张照片。
+
+时间段：{group_name} - {subgroup_name}
+叙事文本：
+{narrative}
+{type_hint}
+
+请输出包含 {photo_count} 个元素的JSON数组："""
+
+        raw = qwen.get_response(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model="qwen-plus",
+            max_tokens=2048,
+            temperature=0.6,
+            enable_image_input=False
+        )
+
+        # 解析JSON数组
+        raw = raw.strip()
+        # 去掉可能的 markdown 代码块
+        if raw.startswith('```'):
+            raw = re.sub(r'^```[a-z]*\n?', '', raw)
+            raw = re.sub(r'\n?```$', '', raw)
+            raw = raw.strip()
+
+        captions = json.loads(raw)
+
+        # 确保数量匹配：不足则重复最后一段，多余则截断
+        if not isinstance(captions, list):
+            raise ValueError("Model did not return a list")
+        while len(captions) < photo_count:
+            captions.append(captions[-1] if captions else narrative[:60])
+        captions = captions[:photo_count]
+
+        return jsonify({"captions": captions})
+
+    except json.JSONDecodeError:
+        # 如果JSON解析失败，尝试简单地按句子切分
+        sentences = [s.strip() for s in re.split(r'[。！？\n]+', narrative) if s.strip()]
+        captions = []
+        chunk = max(1, len(sentences) // photo_count)
+        for i in range(photo_count):
+            start = i * chunk
+            end = start + chunk if i < photo_count - 1 else len(sentences)
+            part = '。'.join(sentences[start:end])
+            captions.append(part[:80] if part else narrative[:60])
+        return jsonify({"captions": captions})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/generate-video', methods=['POST'])
 def generate_video():
     try:

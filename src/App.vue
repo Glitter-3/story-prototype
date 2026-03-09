@@ -4,20 +4,20 @@
       <div class="header-left">
         <div class="logo">
           <span class="logo-icon">📸</span>
-          <span class="logo-text">Photo Story AI</span>
+          <span class="logo-text">MemoryWeaver</span>
         </div>
       </div>
 
       <div class="header-nav">
-        <div 
-          v-for="stage in 5" 
+        <div
+          v-for="stage in 5"
           :key="stage"
           class="nav-item"
           :class="{ active: currentStage === stage }"
           @click="switchStage(stage)"
         >
           <span class="nav-number">{{ stage }}</span>
-          <span class="nav-text">Stage {{ stage }}</span>
+          <span class="nav-text">{{ ['Collect','Recall','Compose','Revisit','Cherish'][stage-1] }}</span>
         </div>
       </div>
 
@@ -28,7 +28,7 @@
           class="control-btn primary"
           @click="saveExperimentLog"
           style="padding: 6px 8px; font-size: 12px; background: #ffffff; color: #666666;">
-          保存日志
+          Saved logs
         </button>
       </div>
     </header>
@@ -678,91 +678,106 @@
 
         </div>
 
-        <!-- ==================== Stage 5: 视频生成 ==================== -->
-        <div v-if="currentStage === 5" class="stage5-layout" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
-          <!-- 照片和视频区域 -->
-          <div class="stage5-content-section" style="flex: 1; min-height: 0; overflow-y: auto;">
+        <!-- ==================== Stage 5: 故事回顾 ==================== -->
+        <div v-if="currentStage === 5" class="stage5-layout">
 
-            <!-- ===== 按 group / subgroup 展示所有照片（与 Stage3 一致）===== -->
-            <div class="photo-panel" style="flex: 1; min-height: 0; overflow-y: auto;">
-              <div class="panel-header">
-                <h2>📷 照片面板</h2>
-                <div class="panel-controls">
-                  <button class="control-btn primary" @click="generateAiVideo" :disabled="isGeneratingVideo">
-                    {{ isGeneratingVideo ? '🎬 视频生成中…' : '🎬 生成最终视频' }}
-                  </button>
-                  <span v-if="videoGenerationError" class="error-message" style="font-size:12px; color:red; margin-left:8px;">
-                    {{ videoGenerationError }}
-                  </span>
-                </div>
-              </div>
+          <!-- 顶部操作栏 -->
+          <div class="s5-topbar">
+            <div class="s5-topbar-left">
+              <span class="s5-topbar-title">✨ 故事回顾</span>
+              <span class="s5-topbar-subtitle">{{ photoGroupsWithAi.length }} 个时期</span>
+            </div>
+            <div class="s5-topbar-right">
+              <button class="s5-video-btn" @click="generateAiVideo" :disabled="isGeneratingVideo">
+                <span class="s5-video-btn-icon">🎬</span>
+                <span>{{ isGeneratingVideo ? '视频生成中…' : '生成视频' }}</span>
+                <span v-if="isGeneratingVideo" class="s5-spinner"></span>
+              </button>
+              <button class="s5-story-btn" @click="generateStory" :disabled="isGeneratingStory">
+                <span>📖</span>
+                <span>{{ isGeneratingStory ? '生成中…' : '生成图文故事' }}</span>
+                <span v-if="isGeneratingStory" class="s5-spinner"></span>
+              </button>
+              <span v-if="videoGenerationError" style="font-size:11px; color:#e74c3c; margin-left:8px;">{{ videoGenerationError }}</span>
+            </div>
+          </div>
 
-              <div class="photo-panel-content">
-                <div class="group-section">
-                  <div class="timeline vertical">
-                    <div
-                      v-for="(group, gIdx) in photoGroupsWithAi"
-                      :key="gIdx"
-                      class="timeline-node-vertical"
-                    >
-                      <!-- 时间节点标题 -->
-                      <div class="group-node-vertical">
-                        <div class="group-title">{{ group.name }}</div>
-                      </div>
+          <!-- 主内容区 -->
+          <div class="s5-scroll-area">
 
-                      <!-- 子分组列表 -->
-                      <div class="subgroup-list-vertical">
-                        <div
-                          v-for="(subgroup, sgIdx) in group.subgroups"
-                          :key="sgIdx"
-                          class="subgroup-box"
-                        >
-                          <div class="subgroup-title">{{ subgroup.name }}</div>
-                          <div class="photo-grid">
-                            <!-- 原始照片 -->
-                            <div
-                              class="photo-slot"
-                              v-for="idx in subgroup.photo_indices"
-                              :key="idx"
-                            >
-                              <div class="photo-placeholder">
-                                <template v-if="photos[idx]?.url">
-                                  <img
-                                    :src="photos[idx].url"
-                                    class="photo-preview"
-                                    alt="预览图片"
-                                    @click="openImagePreview(photos[idx]?.url)"
-                                  />
-                                </template>
-                                <template v-else>
-                                  <span class="photo-number">{{ idx + 1 }}</span>
-                                  <span class="add-icon">+</span>
-                                </template>
-                              </div>
+            <!-- 视频展示区（如已生成） -->
+            <div v-if="aiVideo.url" class="s5-video-section">
+              <div class="s5-video-label">🎬 AI 生成视频</div>
+              <video :src="aiVideo.url" controls class="s5-video-player"></video>
+            </div>
+
+            <!-- ===== 照片面板（与 stage4 一致的布局） ===== -->
+            <div v-if="!showStoryPanel" class="photo-panel" style="border-radius:8px;">
+              <div class="group-section">
+                <div class="timeline vertical">
+                  <div
+                    v-for="(group, gIdx) in photoGroupsWithAi"
+                    :key="gIdx"
+                    class="timeline-node-vertical"
+                  >
+                    <!-- 时间节点标题 -->
+                    <div class="group-node-vertical">
+                      <div class="group-title">{{ group.name }}</div>
+                    </div>
+
+                    <!-- 子分组列表 -->
+                    <div class="subgroup-list-vertical">
+                      <div
+                        v-for="(subgroup, sgIdx) in group.subgroups"
+                        :key="sgIdx"
+                        class="subgroup-box"
+                        :class="{ reviewed: subgroup.stage4?.status === 'done' }"
+                      >
+                        <div class="subgroup-title">{{ subgroup.name }}</div>
+                        <div class="photo-grid">
+                          <!-- 原始照片 -->
+                          <div
+                            class="photo-slot"
+                            v-for="idx in subgroup.photo_indices"
+                            :key="idx"
+                          >
+                            <div class="photo-placeholder">
+                              <template v-if="photos[idx]?.url">
+                                <img
+                                  :src="photos[idx].url"
+                                  class="photo-preview"
+                                  alt="预览图片"
+                                  @click="openImagePreview(photos[idx]?.url)"
+                                />
+                              </template>
+                              <template v-else>
+                                <span class="photo-number">{{ idx + 1 }}</span>
+                                <span class="add-icon">+</span>
+                              </template>
                             </div>
+                          </div>
 
-                            <!-- AI 生成照片 -->
-                            <div
-                              class="photo-slot"
-                              v-for="(ai, aiIdx) in subgroup.ai_photos"
-                              :key="'ai-' + aiIdx"
-                            >
-                              <div class="photo-placeholder" style="position: relative;">
-                                <template v-if="ai.url">
-                                  <img
-                                    :src="ai.url"
-                                    class="photo-preview"
-                                    alt="AI增强图片"
-                                    @click="openImagePreview(ai.url)"
-                                  />
-                                  <span class="ai-photo-label">{{ getLetterIndex(aiIdx) }}</span>
-                                  <span class="ai-photo-iter-label">{{ ai.iterationLabel }}</span>
-                                </template>
-                                <template v-else>
-                                  <span class="photo-number">{{ aiIdx + 1 }}</span>
-                                  <span class="add-icon">+</span>
-                                </template>
-                              </div>
+                          <!-- AI增强照片 -->
+                          <div
+                            class="photo-slot"
+                            v-for="(ai, aiIdx) in subgroup.ai_photos"
+                            :key="'ai-' + aiIdx"
+                          >
+                            <div class="photo-placeholder" style="position: relative;">
+                              <template v-if="ai.url">
+                                <img
+                                  :src="ai.url"
+                                  class="photo-preview"
+                                  alt="AI增强图片"
+                                  @click="openImagePreview(ai.url)"
+                                />
+                                <span class="ai-photo-label">{{ getLetterIndex(aiIdx) }}</span>
+                                <span class="ai-photo-iter-label">{{ ai.iterationLabel }}</span>
+                              </template>
+                              <template v-else>
+                                <span class="photo-number">{{ aiIdx + 1 }}</span>
+                                <span class="add-icon">+</span>
+                              </template>
                             </div>
                           </div>
                         </div>
@@ -771,31 +786,110 @@
                   </div>
                 </div>
               </div>
+              <div v-if="photoGroupsWithAi.length === 0" class="s5-empty">
+                <div class="s5-empty-icon">📷</div>
+                <div class="s5-empty-text">请先完成前面步骤</div>
+              </div>
             </div>
 
-            <!-- ===== 视频播放区 ===== -->
-            <div class="stage5-section video-section" style="flex-shrink:0; padding: 12px 16px; border-top: 1px solid #eee;">
-              <div class="section-title" style="font-size:13px; font-weight:600; color:#555; margin-bottom:10px;">🎬 AI 增强视频</div>
-              <div style="display: flex; justify-content: center; align-items: center; width: 100%;">
-                <div class="video-slot" style="display: flex; justify-content: center; align-items: center; width: 100%;">
-                  <video
-                    v-if="aiVideo.url"
-                    :src="aiVideo.url"
-                    controls
-                    class="video-player"
-                    style="max-width: 100%; max-height: 300px; width: auto; height: auto; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);"
-                  >
-                  </video>
-                  <div v-else class="video-placeholder" style="width: 100%; height: 120px; display: flex; align-items: center; justify-content: center; background: #f5f5f5; border-radius: 8px;">
-                    <span style="color: #999; font-size:13px;">视频生成后将显示在这里</span>
+            <!-- ===== 图文故事时间轴（点击"生成图文故事"后显示） ===== -->
+            <div v-if="showStoryPanel" class="s5-story-panel">
+              <!-- 返回照片面板按钮 -->
+              <div class="s5-story-back" @click="showStoryPanel = false">← 返回照片面板</div>
+
+              <div class="s5-timeline-wrap" v-if="storyItems.length > 0">
+                <div class="s5-axis-line"></div>
+
+                <template v-for="(item, i) in storyItems" :key="i">
+
+                  <!-- Group 标题节点 -->
+                  <div v-if="item.isNewGroup" class="s5-epoch-node">
+                    <div class="s5-epoch-dot"></div>
+                    <div class="s5-epoch-label">{{ item.groupName }}</div>
                   </div>
+
+                  <!-- Subgroup 分隔 -->
+                  <div v-if="item.isNewSubgroup" class="s5-subgroup-divider">
+                    <div class="s5-subgroup-line"></div>
+                    <div class="s5-subgroup-label">{{ item.subgroupName }}</div>
+                    <div class="s5-subgroup-line"></div>
+                  </div>
+
+                  <!-- 胶囊卡片行（左右交替） -->
+                  <div class="s5-pill-row" :class="i % 2 === 0 ? 's5-pill-left' : 's5-pill-right'">
+
+                    <!-- 左半区 -->
+                    <div class="s5-side s5-side-left">
+                      <div v-if="i % 2 === 0" class="s5-pill">
+                        <div class="s5-pill-img-wrap">
+                          <img v-if="item.url" :src="item.url" class="s5-pill-img" @click="openImagePreview(item.url)" />
+                          <div v-else class="s5-pill-img-empty">📷</div>
+                          <span v-if="item.type === 'ai'" class="s5-pill-ai-badge">AI</span>
+                        </div>
+                        <div class="s5-pill-text-wrap">
+                          <!-- 阅读模式 -->
+                          <p v-if="!item.isEditing" class="s5-pill-text" @dblclick="startEditStoryItem(i)">
+                            {{ item.text }}
+                            <span class="s5-edit-hint">双击编辑</span>
+                          </p>
+                          <!-- 编辑模式 -->
+                          <div v-else class="s5-pill-edit">
+                            <textarea class="s5-pill-textarea" v-model="item.editBuffer" rows="4"></textarea>
+                            <div class="s5-pill-edit-actions">
+                              <button class="s5-edit-confirm" @click="confirmStoryEdit(i)">确认</button>
+                              <button class="s5-edit-cancel" @click="cancelStoryEdit(i)">取消</button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 中轴圆点 -->
+                    <div class="s5-axis-dot-col">
+                      <div class="s5-axis-dot"></div>
+                    </div>
+
+                    <!-- 右半区 -->
+                    <div class="s5-side s5-side-right">
+                      <div v-if="i % 2 !== 0" class="s5-pill">
+                        <div class="s5-pill-img-wrap">
+                          <img v-if="item.url" :src="item.url" class="s5-pill-img" @click="openImagePreview(item.url)" />
+                          <div v-else class="s5-pill-img-empty">📷</div>
+                          <span v-if="item.type === 'ai'" class="s5-pill-ai-badge">AI</span>
+                        </div>
+                        <div class="s5-pill-text-wrap">
+                          <p v-if="!item.isEditing" class="s5-pill-text" @dblclick="startEditStoryItem(i)">
+                            {{ item.text }}
+                            <span class="s5-edit-hint">双击编辑</span>
+                          </p>
+                          <div v-else class="s5-pill-edit">
+                            <textarea class="s5-pill-textarea" v-model="item.editBuffer" rows="4"></textarea>
+                            <div class="s5-pill-edit-actions">
+                              <button class="s5-edit-confirm" @click="confirmStoryEdit(i)">确认</button>
+                              <button class="s5-edit-cancel" @click="cancelStoryEdit(i)">取消</button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+
+                </template>
+
+                <div class="s5-timeline-end">
+                  <div class="s5-end-dot"></div>
+                  <div class="s5-end-label">故事待续…</div>
                 </div>
+              </div>
+
+              <div v-if="storyItems.length === 0 && !isGeneratingStory" class="s5-empty">
+                <div class="s5-empty-icon">📖</div>
+                <div class="s5-empty-text">生成图文故事中，请稍候…</div>
               </div>
             </div>
 
           </div>
-
-          <!-- Stage5无用户口述区（已移除） -->
         </div>
       </section>
 
@@ -1270,6 +1364,10 @@ export default {
       // 视频生成状态
       isGeneratingVideo: false,
       videoGenerationError: null,
+      // 图文故事状态
+      isGeneratingStory: false,
+      storyItems: [],        // [{ url, type, gIdx, sgIdx, groupName, subgroupName, text, isEditing, editBuffer }]
+      showStoryPanel: false,
       // stage 3&4 整合文本用户修改功能
       assistantEditMode: false,        // 是否处于编辑模式（显示 textarea）
       assistantEditBuffer: '',        // 编辑缓冲文本（textarea 的 v-model）
@@ -1408,7 +1506,55 @@ export default {
       const list = this.currentStage === 2 ? this.questions : this.stage4Questions;
       if (!list) return 0;
       return list.filter(q => q.answered).length
-    }
+    },
+
+    // Stage5：将 allPhotos 加工为带去重 sentence、subgroup 分隔标记的胶囊列表
+    stage5Items() {
+      if (!this.allPhotos || this.allPhotos.length === 0) return [];
+
+      const seenSentences = new Set();
+      let lastGIdx = null;
+      let lastSgIdx = null;
+      let globalCardIdx = 0;
+
+      return this.allPhotos.map((photo) => {
+        const gIdx = photo.group_index ?? null;
+        const sgIdx = photo.subgroup_index ?? null;
+        const sentenceKey = `${gIdx}_${sgIdx}_${(photo.sentence || '').trim()}`;
+
+        const isNewGroup = gIdx !== lastGIdx;
+        const isNewSubgroup = !isNewGroup && sgIdx !== lastSgIdx;
+
+        lastGIdx = gIdx;
+        lastSgIdx = sgIdx;
+
+        const group = (gIdx !== null && this.photoGroupsWithAi[gIdx]) ? this.photoGroupsWithAi[gIdx] : null;
+        const subgroup = (group && sgIdx !== null && group.subgroups[sgIdx]) ? group.subgroups[sgIdx] : null;
+
+        // 去重：同 subgroup 内相同 sentence，后续显示"（同上）"，保证每张图都有文字
+        let displaySentence = (photo.sentence || '').trim();
+        if (displaySentence && seenSentences.has(sentenceKey)) {
+          displaySentence = '（与上一段相同）';
+        } else if (displaySentence) {
+          seenSentences.add(sentenceKey);
+        } else {
+          displaySentence = '（暂无对应叙述）';
+        }
+
+        const side = globalCardIdx % 2 === 0 ? 'left' : 'right';
+        globalCardIdx++;
+
+        return {
+          ...photo,
+          displaySentence,
+          isNewGroup,
+          isNewSubgroup,
+          groupName: group ? group.name : '',
+          subgroupName: subgroup ? subgroup.name : '',
+          side,
+        };
+      });
+    },
   },
   mounted() {
     const uuid = () => ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
@@ -3427,11 +3573,12 @@ export default {
           const stripDataPrefix = (s) =>
             s && s.startsWith('data:image') ? s.split(',', 2)[1] : s;
 
-          const payloadToSend = toGenerate.map(item => {
-            const gIdx = item.group_index ?? this.activeSubgroup?.groupIdx ?? null;
-            const sgIdx = item.subgroup_index ?? this.activeSubgroup?.subgroupIdx ?? null;
+        const payloadToSend = toGenerate.map(item => {
+            // subgroup 模式：强制使用当前 activeSubgroup，不信任后端返回的 group/subgroup_index
+            const gIdx = this.activeSubgroup ? this.activeSubgroup.groupIdx : (item.group_index ?? null);
+            const sgIdx = this.activeSubgroup ? this.activeSubgroup.subgroupIdx : (item.subgroup_index ?? null);
 
-            // 风格参考图：取该 subgroup 第一张原图
+            // 参考图：只取当前 subgroup 的原始照片
             const sgPhotoIndices = (gIdx != null && sgIdx != null)
               ? (this.photoGroups[gIdx]?.subgroups?.[sgIdx]?.photo_indices || [])
               : [];
@@ -3440,7 +3587,6 @@ export default {
               : (base64Photos[0] || null);
             const stylePhoto = stylePhotoRaw ? stripDataPrefix(stylePhotoRaw) : null;
 
-            // 主体参考图：取该 subgroup 对应的角色头像
             const subgroupPhotoIndicesSet = new Set(sgPhotoIndices);
             let characterAvatars = this.characters
               .filter(c => c.avatar && subgroupPhotoIndicesSet.has(c.photoIndex))
@@ -3449,14 +3595,12 @@ export default {
               .slice(0, 4);
 
             if (characterAvatars.length === 0 && this.characters.length > 0) {
-              // 兜底：全局角色头像
               characterAvatars = this.characters
                 .map(c => c.avatar ? stripDataPrefix(c.avatar) : null)
                 .filter(Boolean)
                 .slice(0, 4);
             }
 
-            // 内容参考图：该 subgroup 的原图
             const refPhotos = sgPhotoIndices
               .slice(0, 4)
               .map(idx => base64Photos[idx])
@@ -3501,14 +3645,14 @@ export default {
                 iterationLabel: `Iter ${this.iterationCount + 1}`,
                 sentence: pairFromAll?.sentence || null,
                 origin_pair_index: res.index,
-                // subgroup 模式下 pairFromAll 可能没有 group/subgroup，回退到 activeSubgroup
-                group_index: pairFromAll?.group_index ?? this.activeSubgroup?.groupIdx ?? null,
-                subgroup_index: pairFromAll?.subgroup_index ?? this.activeSubgroup?.subgroupIdx ?? null
+                // subgroup 模式：强制使用 activeSubgroup，不信任后端返回的索引
+                group_index: this.activeSubgroup ? this.activeSubgroup.groupIdx : (pairFromAll?.group_index ?? null),
+                subgroup_index: this.activeSubgroup ? this.activeSubgroup.subgroupIdx : (pairFromAll?.subgroup_index ?? null)
               };
 
               nextRoundAiPhotos.push(aiPhotoObj);
 
-              // 方案三：直接追加到 subgroup.ai_photos，保留旧版本
+              // 追加到 subgroup.ai_photos（用 $set 保证响应式）
               const gIdx = aiPhotoObj.group_index;
               const sgIdx = aiPhotoObj.subgroup_index;
               if (gIdx != null && sgIdx != null) {
@@ -3517,7 +3661,8 @@ export default {
                   if (!sg.ai_photos) {
                     this.$set(sg, 'ai_photos', []);
                   }
-                  sg.ai_photos.push(aiPhotoObj);
+                  // 用 splice 触发 Vue 响应式更新
+                  sg.ai_photos.splice(sg.ai_photos.length, 0, aiPhotoObj);
                 }
               }
             });
@@ -3529,31 +3674,40 @@ export default {
         nextRoundAiPhotos.sort((a,b) => (a.origin_pair_index || 0) - (b.origin_pair_index || 0));
         this.aiPhotos = [...this.aiPhotos, ...nextRoundAiPhotos];
 
-        // 6. 重新构建 allPhotos，取每个 origin_pair_index 的最新版本（aiPhotos 中最后一个匹配项）
-        this.allPhotos = [];
+        // 6. 更新 allPhotos：只替换本次生成涉及的 pair，不清空其他 subgroup 的数据
         newSentencePairs.forEach(pair => {
           const matches = this.aiPhotos.filter(p => p.origin_pair_index === pair.index);
           const aiP = matches.length > 0 ? matches[matches.length - 1] : null;
-          if (aiP) {
-            this.allPhotos.push({
-              type: 'ai',
-              sourceIndex: pair.index,
-              url: aiP.url,
-              prompt: aiP.prompt,
-              sentence: aiP.sentence,
-              group_index: pair.group_index ?? null,
-              subgroup_index: pair.subgroup_index ?? null
-            });
-          } else {
-            if (this.photos[pair.index]) {
-              this.allPhotos.push({
+
+          // 先移除 allPhotos 中该 pair 的旧条目
+          const existingIdx = this.allPhotos.findIndex(p => p.sourceIndex === pair.index);
+
+          const newEntry = aiP
+            ? {
+                type: 'ai',
+                sourceIndex: pair.index,
+                url: aiP.url,
+                prompt: aiP.prompt,
+                sentence: aiP.sentence,
+                group_index: pair.group_index ?? null,
+                subgroup_index: pair.subgroup_index ?? null
+              }
+            : this.photos[pair.index]
+            ? {
                 type: 'original',
                 sourceIndex: pair.index,
                 url: this.photos[pair.index].url,
                 sentence: pair.sentence,
                 group_index: pair.group_index ?? null,
                 subgroup_index: pair.subgroup_index ?? null
-              });
+              }
+            : null;
+
+          if (newEntry) {
+            if (existingIdx >= 0) {
+              this.allPhotos.splice(existingIdx, 1, newEntry);
+            } else {
+              this.allPhotos.push(newEntry);
             }
           }
         });
@@ -3782,26 +3936,199 @@ export default {
     finishSubgroupReview() {
       if (!this.activeSubgroup) return;
 
+      const { groupIdx, subgroupIdx } = this.activeSubgroup;
+      const BACKEND_BASE = 'http://127.0.0.1:5000';
+
+      // ---- 更新 allPhotos：先移除该 subgroup 旧条目，再追加最新版本 ----
+      this.allPhotos = this.allPhotos.filter(
+        p => !(p.group_index == groupIdx && p.subgroup_index == subgroupIdx)
+      );
+
+      // 取该 subgroup 的所有 sentencePairs，按 index 排序
+      const subPairs = this.sentencePairs
+        .filter(p => p.group_index == groupIdx && p.subgroup_index == subgroupIdx)
+        .sort((a, b) => a.index - b.index);
+
+      for (const pair of subPairs) {
+        // 找最新的 AI 图（origin_pair_index 匹配，取最后一个）
+        const aiMatches = this.aiPhotos.filter(p => p.origin_pair_index === pair.index);
+        const aiPhoto = aiMatches.length > 0 ? aiMatches[aiMatches.length - 1] : null;
+
+        if (aiPhoto) {
+          this.allPhotos.push({
+            type: 'ai',
+            sourceIndex: pair.index,
+            url: aiPhoto.url,
+            prompt: aiPhoto.prompt,
+            sentence: pair.sentence,
+            group_index: groupIdx,
+            subgroup_index: subgroupIdx,
+          });
+        } else {
+          // fallback 到原始照片
+          let fallbackUrl = null;
+          if (pair.index !== undefined && this.photos[pair.index]) {
+            fallbackUrl = this.photos[pair.index].url;
+          } else {
+            // 取该 subgroup 第一张原图
+            const sg = this.photoGroups[groupIdx]?.subgroups[subgroupIdx];
+            const firstIdx = sg?.photo_indices?.[0];
+            if (firstIdx !== undefined && this.photos[firstIdx]) {
+              fallbackUrl = this.photos[firstIdx].url;
+            }
+          }
+          if (fallbackUrl) {
+            if (fallbackUrl.startsWith('/')) fallbackUrl = BACKEND_BASE + fallbackUrl;
+            this.allPhotos.push({
+              type: 'original',
+              sourceIndex: pair.index,
+              url: fallbackUrl,
+              sentence: pair.sentence,
+              group_index: groupIdx,
+              subgroup_index: subgroupIdx,
+            });
+          }
+        }
+      }
+
       this.activeSubgroup.stage4.status = 'done';
       this.activeSubgroup.stage4.finishedAt = Date.now();
 
       // 清空 Stage 4 右侧状态
       this.stage4Questions = [];
-      this.stage4QA = []; 
+      this.stage4QA = [];
       this.currentQuestionIndex = null;
-
-      // 不再显示“新增内容生成图像”按钮
-      // 但已经生成过的 AI 图保留在 subgroup 中
 
       // 取消选中，让用户回到 timeline
       this.activeSubgroup = null;
 
-      console.log("subgroup 回忆完成");
+      console.log(`subgroup (g=${groupIdx}, sg=${subgroupIdx}) 回忆完成，allPhotos 已更新，当前共 ${this.allPhotos.length} 条`);
     },
     getLetterIndex(idx) {
       return String.fromCharCode(97 + idx);
     },
 
+
+    // Stage5：根据 gIdx/sgIdx 获取对应叙述文字
+    getSubgroupNarrative(gIdx, sgIdx) {
+      const pairs = this.sentencePairs.filter(p =>
+        p.group_index == gIdx && p.subgroup_index == sgIdx
+      );
+      if (pairs.length > 0) {
+        return pairs.map(p => p.sentence).filter(Boolean).join(' ');
+      }
+      return '';
+    },
+
+    // ===================== 图文故事生成 =====================
+    async generateStory() {
+      if (this.isGeneratingStory) return;
+      this.isGeneratingStory = true;
+      this.storyItems = [];
+      this.showStoryPanel = true;
+
+      try {
+        // 按 group → subgroup 顺序，收集所有图片（原始+AI）及该 subgroup 的叙述文本
+        const allItems = [];
+        for (let gIdx = 0; gIdx < this.photoGroupsWithAi.length; gIdx++) {
+          const group = this.photoGroupsWithAi[gIdx];
+          for (let sgIdx = 0; sgIdx < group.subgroups.length; sgIdx++) {
+            const subgroup = group.subgroups[sgIdx];
+            const narrative = this.getSubgroupNarrative(gIdx, sgIdx);
+
+            // 原始照片
+            for (const idx of (subgroup.photo_indices || [])) {
+              const url = this.photos[idx]?.url || null;
+              if (url) {
+                allItems.push({ url, type: 'original', gIdx, sgIdx, groupName: group.name, subgroupName: subgroup.name, narrative });
+              }
+            }
+            // AI 照片
+            for (const ai of (subgroup.ai_photos || [])) {
+              if (ai.url) {
+                allItems.push({ url: ai.url, type: 'ai', gIdx, sgIdx, groupName: group.name, subgroupName: subgroup.name, narrative });
+              }
+            }
+          }
+        }
+
+        if (allItems.length === 0) {
+          alert('暂无照片，请先完成前面的步骤');
+          this.isGeneratingStory = false;
+          return;
+        }
+
+        // 构建请求：把每个 subgroup 的图片列表 + 叙述文本发给后端，让大模型分配文字
+        // 按 subgroup 分组发送，减少 token 压力
+        const subgroupMap = {};
+        for (const item of allItems) {
+          const key = `${item.gIdx}_${item.sgIdx}`;
+          if (!subgroupMap[key]) {
+            subgroupMap[key] = {
+              gIdx: item.gIdx, sgIdx: item.sgIdx,
+              groupName: item.groupName, subgroupName: item.subgroupName,
+              narrative: item.narrative,
+              items: []
+            };
+          }
+          subgroupMap[key].items.push(item);
+        }
+
+        const results = [];
+        for (const key of Object.keys(subgroupMap)) {
+          const sg = subgroupMap[key];
+          const photoCount = sg.items.length;
+
+          const resp = await axios.post('http://127.0.0.1:5000/generate-story-captions', {
+            narrative: sg.narrative,
+            photo_count: photoCount,
+            group_name: sg.groupName,
+            subgroup_name: sg.subgroupName,
+            photo_types: sg.items.map(it => it.type)
+          }, { timeout: 60000 });
+
+          const captions = resp.data?.captions || [];
+          sg.items.forEach((item, i) => {
+            results.push({
+              ...item,
+              text: captions[i] || sg.narrative || '',
+              isEditing: false,
+              editBuffer: '',
+            });
+          });
+        }
+
+        // 标记 isNewGroup / isNewSubgroup
+        let lastGIdx = null, lastSgIdx = null;
+        for (const item of results) {
+          item.isNewGroup = item.gIdx !== lastGIdx;
+          item.isNewSubgroup = !item.isNewGroup && item.sgIdx !== lastSgIdx;
+          lastGIdx = item.gIdx;
+          lastSgIdx = item.sgIdx;
+        }
+
+        this.storyItems = results;
+      } catch (err) {
+        console.error('[generateStory] 错误:', err);
+        alert('生成图文故事失败，请查看控制台');
+      } finally {
+        this.isGeneratingStory = false;
+      }
+    },
+
+    startEditStoryItem(i) {
+      this.storyItems[i].editBuffer = this.storyItems[i].text;
+      this.storyItems[i].isEditing = true;
+    },
+
+    confirmStoryEdit(i) {
+      this.storyItems[i].text = this.storyItems[i].editBuffer;
+      this.storyItems[i].isEditing = false;
+    },
+
+    cancelStoryEdit(i) {
+      this.storyItems[i].isEditing = false;
+    },
 
 //-----------------------------Stage5---------------------------------------------
 
