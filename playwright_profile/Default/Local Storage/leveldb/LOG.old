@@ -1,24 +1,44 @@
-2026/03/04-19:40:51.252 db646 Reusing MANIFEST /Users/starry/Documents/sss_files/FDUVIS/storytelling/story-prototype/playwright_profile/Default/Local Storage/leveldb/MANIFEST-000001
-2026/03/04-19:40:51.254 db646 Recovering log #96
-2026/03/04-19:40:51.255 db646 Reusing old log /Users/starry/Documents/sss_files/FDUVIS/storytelling/story-prototype/playwright_profile/Default/Local Storage/leveldb/000096.log 
-2026/03/04-19:41:51.261 db64a Level-0 table #100: started
-2026/03/04-19:41:51.269 db64a Level-0 table #100: 182114 bytes OK
-2026/03/04-19:41:51.271 db64a Delete type=0 #96
-2026/03/04-19:43:15.245 db64a Level-0 table #102: started
-2026/03/04-19:43:15.250 db64a Level-0 table #102: 54285 bytes OK
-2026/03/04-19:43:15.251 db64a Delete type=0 #99
-2026/03/04-19:43:15.252 db64a Compacting 4@0 + 1@1 files
-2026/03/04-19:43:15.257 db64a Generated table #103@0: 54 keys, 195253 bytes
-2026/03/04-19:43:15.258 db64a Compacted 4@0 + 1@1 files => 195253 bytes
-2026/03/04-19:43:15.259 db64a compacted to: files[ 0 1 1 0 0 0 0 ]
-2026/03/04-19:43:15.259 db64a Delete type=2 #102
-2026/03/04-19:43:15.259 db64a Delete type=2 #100
-2026/03/04-19:43:15.259 db64a Delete type=2 #95
-2026/03/04-19:43:15.259 db64a Delete type=2 #97
-2026/03/04-19:43:15.259 db64a Delete type=2 #93
-2026/03/04-19:44:54.138 dbaf4 Level-0 table #105: started
-2026/03/04-19:44:54.141 dbaf4 Level-0 table #105: 61357 bytes OK
-2026/03/04-19:44:54.143 dbaf4 Delete type=0 #101
-2026/03/04-19:45:57.110 db64a Level-0 table #107: started
-2026/03/04-19:45:57.117 db64a Level-0 table #107: 64870 bytes OK
-2026/03/04-19:45:57.120 db64a Delete type=0 #104
+2026/03/08-23:34:50.346 202ea1 Reusing MANIFEST /Users/starry/Documents/sss_files/FDUVIS/storytelling/story-prototype/playwright_profile/Default/Local Storage/leveldb/MANIFEST-000001
+2026/03/08-23:34:50.348 202ea1 Recovering log #106
+2026/03/08-23:34:50.349 202ea1 Level-0 table #109: started
+2026/03/08-23:34:50.353 202ea1 Level-0 table #109: 63086 bytes OK
+2026/03/08-23:34:50.354 202ea1 Delete type=0 #106
+2026/03/08-23:35:50.362 202ea4 Level-0 table #112: started
+2026/03/08-23:35:50.367 202ea4 Level-0 table #112: 162154 bytes OK
+2026/03/08-23:35:50.369 202ea4 Delete type=0 #110
+2026/03/08-23:35:50.369 202ea4 Compacting 4@0 + 1@1 files
+2026/03/08-23:35:50.374 202ea4 Generated table #113@0: 54 keys, 200307 bytes
+2026/03/08-23:35:50.374 202ea4 Compacted 4@0 + 1@1 files => 200307 bytes
+2026/03/08-23:35:50.375 202ea4 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/03/08-23:35:50.375 202ea4 Delete type=2 #103
+2026/03/08-23:35:50.375 202ea4 Delete type=2 #105
+2026/03/08-23:35:50.375 202ea4 Delete type=2 #107
+2026/03/08-23:35:50.376 202ea4 Delete type=2 #112
+2026/03/08-23:35:50.376 202ea4 Delete type=2 #109
+2026/03/08-23:37:14.579 202ea4 Level-0 table #115: started
+2026/03/08-23:37:14.582 202ea4 Level-0 table #115: 69448 bytes OK
+2026/03/08-23:37:14.585 202ea4 Delete type=0 #111
+2026/03/08-23:38:53.002 202fe1 Level-0 table #117: started
+2026/03/08-23:38:53.005 202fe1 Level-0 table #117: 73105 bytes OK
+2026/03/08-23:38:53.007 202fe1 Delete type=0 #114
+2026/03/08-23:40:53.001 202fe1 Level-0 table #119: started
+2026/03/08-23:40:53.006 202fe1 Level-0 table #119: 79975 bytes OK
+2026/03/08-23:40:53.008 202fe1 Delete type=0 #116
+2026/03/08-23:41:53.000 202fe1 Level-0 table #121: started
+2026/03/08-23:41:53.006 202fe1 Level-0 table #121: 79771 bytes OK
+2026/03/08-23:41:53.008 202fe1 Delete type=0 #118
+2026/03/08-23:41:53.009 202fe1 Compacting 4@0 + 1@1 files
+2026/03/08-23:41:53.016 202fe1 Generated table #122@0: 55 keys, 208182 bytes
+2026/03/08-23:41:53.016 202fe1 Compacted 4@0 + 1@1 files => 208182 bytes
+2026/03/08-23:41:53.017 202fe1 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/03/08-23:41:53.017 202fe1 Delete type=2 #117
+2026/03/08-23:41:53.017 202fe1 Delete type=2 #115
+2026/03/08-23:41:53.017 202fe1 Delete type=2 #113
+2026/03/08-23:41:53.017 202fe1 Delete type=2 #121
+2026/03/08-23:41:53.017 202fe1 Delete type=2 #119
+2026/03/08-23:42:53.000 202ea1 Level-0 table #124: started
+2026/03/08-23:42:53.003 202ea1 Level-0 table #124: 43250 bytes OK
+2026/03/08-23:42:53.007 202ea1 Delete type=0 #120
+2026/03/08-23:43:42.408 202ea1 Level-0 table #126: started
+2026/03/08-23:43:42.413 202ea1 Level-0 table #126: 45753 bytes OK
+2026/03/08-23:43:42.417 202ea1 Delete type=0 #123

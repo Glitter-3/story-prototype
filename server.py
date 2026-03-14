@@ -1386,32 +1386,71 @@ def save_experiment_log():
     try:
         data = request.get_json()
         log_data = data.get("log", {})
-        user_id = str(log_data.get("userId", "anon"))
-        session_id = str(log_data.get("sessionId", "unknown"))
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        assets_list = data.get("assets", [])
+
+        meta = log_data.get("meta", {})
+        user_id = str(meta.get("userId", "anon"))
+        session_id = str(meta.get("sessionId", "unknown"))
 
         session_dir = LOGS_DIR / user_id / session_id
-        session_dir.mkdir(parents=True, exist_ok=True)
+        assets_dir = session_dir / "assets"
+        for sub in ["original", "ai", "video"]:
+            (assets_dir / sub).mkdir(parents=True, exist_ok=True)
 
-        clean_log = {k: v for k, v in log_data.items() if "Base64" not in k}
-        json_path = session_dir / f"log_{ts}.json"
-        with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(clean_log, f, ensure_ascii=False, indent=2)
+        # --- 复制 assets ---
+        copied_assets = []
+        for item in assets_list:
+            source_url = item.get("sourceUrl", "")
+            dest_filename = item.get("destFilename", "")
+            dest_dir = item.get("destDir", "original")
 
-        zip_path = session_dir / f"assets_{ts}.zip"
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for i, url in enumerate(log_data.get("originalPhotoUrls", [])):
-                p = _resolve_local_path(url)
-                if p: zf.write(p, f"orig_{i}{p.suffix}")
-            
-            for i, url in enumerate(log_data.get("aiPhotoUrls", [])):
-                p = _resolve_local_path(url)
-                if p: zf.write(p, f"ai_{i}{p.suffix}")
+            if not source_url or not dest_filename:
+                continue
 
-        return jsonify({"success": True, "logJson": json_path.name})
+            dest_path = assets_dir / dest_dir / dest_filename
+
+            # 尝试本地路径复制（快速），否则下载
+            local_path = _resolve_local_path_from_url(source_url)
+            try:
+                if local_path and local_path.exists():
+                    shutil.copy2(local_path, dest_path)
+                else:
+                    # 远程下载
+                    resp = requests.get(source_url, timeout=30, stream=True)
+                    resp.raise_for_status()
+                    with open(dest_path, "wb") as f:
+                        for chunk in resp.iter_content(8192):
+                            if chunk:
+                                f.write(chunk)
+                copied_assets.append(str(dest_path.relative_to(session_dir)))
+            except Exception as e:
+                print(f"[save-log] 复制 {source_url} 失败: {e}")
+
+        # --- 写 log.json（固定名，覆盖）---
+        log_path = session_dir / "log.json"
+        with open(log_path, "w", encoding="utf-8") as f:
+            json.dump(log_data, f, ensure_ascii=False, indent=2)
+
+        return jsonify({"success": True, "logJson": "log.json", "copiedAssets": len(copied_assets)})
     except Exception as e:
         print("Save log error:", e)
         return jsonify({"success": False, "message": str(e)}), 500
+
+
+def _resolve_local_path_from_url(url: str):
+    """将后端静态 URL 映射到本地文件路径，返回 Path 或 None。"""
+    try:
+        parsed = urlparse(url)
+        path = unquote(parsed.path)
+        if path.startswith("/static/uploads/"):
+            return UPLOADS_DIR / Path(path).name
+        if path.startswith("/static/generated/"):
+            return GENERATED_DIR / Path(path).name
+        if path.startswith("/static/video/") or path.startswith("/static/videos/"):
+            return Path(__file__).parent / "static" / Path(path).relative_to("/static")
+    except Exception:
+        pass
+    return None
 
 # ================= 视频生成相关 =================
 @app.route('/refine-prompt', methods=['POST'])

@@ -703,7 +703,10 @@
           </div>
 
           <!-- 主内容区 -->
-          <div class="s5-scroll-area">
+          <div style="flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden;">
+
+            <!-- 上半：滚动区域（视频 + 照片面板 + 图文故事） -->
+            <div class="s5-scroll-area" style="flex: 1; min-height: 0; overflow-y: auto;">
 
             <!-- 视频展示区（如已生成） -->
             <div v-if="aiVideo.url" class="s5-video-section">
@@ -797,6 +800,36 @@
               <!-- 返回照片面板按钮 -->
               <div class="s5-story-back" @click="showStoryPanel = false">← 返回照片面板</div>
 
+              <!-- Stage 3 / Stage 4 折叠卡片 -->
+              <div style="margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px;">
+                <!-- Stage 3 卡片 -->
+                <div style="border: 1px solid #e0e0e0; border-radius: 8px; background: #fafafa; overflow: hidden;">
+                  <div
+                    style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; cursor: pointer; user-select: none;"
+                    @click="isStage3CardCollapsed = !isStage3CardCollapsed"
+                  >
+                    <span style="font-size: 13px; font-weight: 600; color: #444;">📖 Stage 3：故事唤醒</span>
+                    <span style="font-size: 12px; color: #999;">{{ isStage3CardCollapsed ? '▼ 展开' : '▲ 收起' }}</span>
+                  </div>
+                  <div v-show="!isStage3CardCollapsed" style="padding: 0 14px 12px; font-size: 13px; color: #333; line-height: 1.7; white-space: pre-wrap; max-height: 300px; overflow-y: auto;">
+                    {{ assistantIntegratedText || '（Stage 3 暂无文本）' }}
+                  </div>
+                </div>
+                <!-- Stage 4 卡片 -->
+                <div style="border: 1px solid #e0e0e0; border-radius: 8px; background: #fafafa; overflow: hidden;">
+                  <div
+                    style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; cursor: pointer; user-select: none;"
+                    @click="isStage4CardCollapsed = !isStage4CardCollapsed"
+                  >
+                    <span style="font-size: 13px; font-weight: 600; color: #444;">💭 Stage 4：话外之音</span>
+                    <span style="font-size: 12px; color: #999;">{{ isStage4CardCollapsed ? '▼ 展开' : '▲ 收起' }}</span>
+                  </div>
+                  <div v-show="!isStage4CardCollapsed" style="padding: 0 14px 12px; font-size: 13px; color: #333; line-height: 1.7; white-space: pre-wrap; max-height: 300px; overflow-y: auto;">
+                    {{ assistantUpdatedText || '（Stage 4 暂无文本）' }}
+                  </div>
+                </div>
+              </div>
+
               <div class="s5-timeline-wrap" v-if="storyItems.length > 0">
                 <div class="s5-axis-line"></div>
 
@@ -886,6 +919,34 @@
               <div v-if="storyItems.length === 0 && !isGeneratingStory" class="s5-empty">
                 <div class="s5-empty-icon">📖</div>
                 <div class="s5-empty-text">生成图文故事中，请稍候…</div>
+              </div>
+            </div>
+
+            </div>
+
+            <!-- ===== 用户口述区（可折叠）===== -->
+            <div :style="isStage5NarrativeCollapsed ? 'flex-shrink:0;' : 'flex-shrink:0; height:340px; display:flex; flex-direction:column;'" style="background:#fff; border-top:2px solid #e5e7eb;">
+              <!-- 标题栏：始终显示，点击折叠/展开 -->
+              <div class="panel-header" style="cursor:pointer; padding:10px 16px; margin:0; flex-shrink:0;" @click="isStage5NarrativeCollapsed = !isStage5NarrativeCollapsed">
+                <h3 style="margin:0;">📝 用户口述</h3>
+                <div class="panel-controls">
+                  <template v-if="!isStage5NarrativeCollapsed">
+                    <button class="control-btn" @click.stop="saveStage5Narrative">保存文本</button>
+                    <button class="control-btn" @click.stop="reselectStage5Text">🔄 重新口述</button>
+                  </template>
+                  <span style="font-size:12px; color:#999; margin-left:8px;">{{ isStage5NarrativeCollapsed ? '▲ 展开' : '▼ 收起' }}</span>
+                </div>
+              </div>
+              <!-- 输入框：展开时占满剩余高度 -->
+              <div v-show="!isStage5NarrativeCollapsed" style="flex:1; min-height:0; padding:0 16px 16px; display:flex; flex-direction:column;">
+                <div
+                  ref="editableNarrative5"
+                  class="narrative-input"
+                  contenteditable="true"
+                  @input="onEditableInput5"
+                  :placeholder="'请在此输入您对故事回顾的描述、感想或补充……'"
+                  style="flex:1; min-height:0; white-space:pre-wrap; overflow-y:auto; border:1px solid #ccc; padding:10px; border-radius:6px; color:black;"
+                ></div>
               </div>
             </div>
 
@@ -1355,6 +1416,9 @@ export default {
       groupingInProgress: false,
       isPhotoPanelCollapsed: false,
       isNarrativeCollapsed: false,
+      isStage5NarrativeCollapsed: true,
+      isStage3CardCollapsed: true,
+      isStage4CardCollapsed: true,
       imagePreview: {
         visible: false,
         url: null,
@@ -1898,6 +1962,20 @@ export default {
         }
         this.placeCaretInElement(blackSpan);
       });
+
+      // Stage 5 用户口述 editor 恢复内容（首次进入时预填 Stage 1 的内容）
+      if (stage === 5) {
+        this.$nextTick(() => {
+          const editor5 = this.$refs.editableNarrative5;
+          if (editor5) {
+            // 如果 stage5 口述还是空的，预填 stage1 内容供用户在此基础上修改
+            if (!this.userNarratives[5]) {
+              this.userNarratives[5] = this.userNarratives[1] || '';
+            }
+            editor5.innerHTML = this.userNarratives[5];
+          }
+        });
+      }
 
       console.log(`已切换到 Stage ${stage}`);
       if (stage === 1) {
@@ -2946,6 +3024,22 @@ export default {
       this.highlightedTexts = [];
       this.userNarratives[this.currentStage] = '';
       console.log('已清空用户口述内容');
+    },
+    onEditableInput5() {
+      const el = this.$refs.editableNarrative5;
+      if (!el) return;
+      this.userNarratives[5] = el.innerHTML;
+    },
+    saveStage5Narrative() {
+      const content = this.userNarratives[5];
+      console.log('Stage 5 的口述内容已保存：', content);
+      alert('第 5 阶段的口述内容已保存');
+    },
+    reselectStage5Text() {
+      this.userNarratives[5] = '';
+      const el = this.$refs.editableNarrative5;
+      if (el) el.innerHTML = '';
+      console.log('已清空 Stage 5 用户口述内容');
     },
     showTextInput(index, questionListKey) {
       const questions = this[questionListKey];
@@ -4417,7 +4511,162 @@ startVideoPolling(taskId, flatPhotos, videoSequences) {
       }
     }
   }, 5000);
-}
+},
+
+    // ===================== 实验日志保存 =====================
+    async saveExperimentLog() {
+      try {
+        // 1. 组装 assets 列表（原始图、AI图、视频）
+        const assets = [];
+
+        // 原始照片
+        for (let gIdx = 0; gIdx < this.photoGroupsWithAi.length; gIdx++) {
+          const group = this.photoGroupsWithAi[gIdx];
+          for (let sgIdx = 0; sgIdx < group.subgroups.length; sgIdx++) {
+            const subgroup = group.subgroups[sgIdx];
+            const photoIndices = subgroup.photo_indices || [];
+            photoIndices.forEach((pIdx, posInSg) => {
+              const photoUrl = this.photos[pIdx]?.url;
+              if (!photoUrl) return;
+              const fullUrl = photoUrl.startsWith('http') ? photoUrl : 'http://127.0.0.1:5000' + photoUrl;
+              const ext = fullUrl.split('.').pop().split('?')[0] || 'jpg';
+              assets.push({
+                sourceUrl: fullUrl,
+                destFilename: `g${gIdx}_s${sgIdx}_p${posInSg}.${ext}`,
+                destDir: 'original'
+              });
+            });
+
+            // AI 照片
+            const aiPhotos = subgroup.ai_photos || [];
+            aiPhotos.forEach((ai, aiIdx) => {
+              if (!ai.url) return;
+              const fullUrl = ai.url.startsWith('http') ? ai.url : 'http://127.0.0.1:5000' + ai.url;
+              const ext = fullUrl.split('.').pop().split('?')[0] || 'jpg';
+              const iterLabel = (ai.iterationLabel || 'v1').replace(/[^a-zA-Z0-9_]/g, '_');
+              const letter = String.fromCharCode(97 + aiIdx);
+              assets.push({
+                sourceUrl: fullUrl,
+                destFilename: `g${gIdx}_s${sgIdx}_v${iterLabel}_${letter}.${ext}`,
+                destDir: 'ai'
+              });
+            });
+          }
+        }
+
+        // 视频
+        if (this.aiVideo?.url) {
+          const videoUrl = this.aiVideo.url.split('?')[0];
+          const fullVideoUrl = videoUrl.startsWith('http') ? videoUrl : 'http://127.0.0.1:5000' + videoUrl;
+          const ext = fullVideoUrl.split('.').pop() || 'mp4';
+          assets.push({
+            sourceUrl: fullVideoUrl,
+            destFilename: `story.${ext}`,
+            destDir: 'video'
+          });
+        }
+
+        // 2. 组装 photoStructure
+        const photoStructure = this.photoGroupsWithAi.map((group, gIdx) => ({
+          groupName: group.name,
+          subgroups: group.subgroups.map((subgroup, sgIdx) => {
+            const summary = this.subgroupSummaries[gIdx]?.[sgIdx]?.data || {};
+            const photoIndices = subgroup.photo_indices || [];
+            const originalPhotos = photoIndices.map((pIdx, posInSg) => {
+              const photoUrl = this.photos[pIdx]?.url || '';
+              const ext = photoUrl.split('.').pop().split('?')[0] || 'jpg';
+              return { filename: `g${gIdx}_s${sgIdx}_p${posInSg}.${ext}`, originalPath: photoUrl };
+            }).filter(p => p.originalPath);
+
+            const aiPhotos = (subgroup.ai_photos || []).map((ai, aiIdx) => {
+              const ext = (ai.url || '').split('.').pop().split('?')[0] || 'jpg';
+              const iterLabel = (ai.iterationLabel || 'v1').replace(/[^a-zA-Z0-9_]/g, '_');
+              const letter = String.fromCharCode(97 + aiIdx);
+              return {
+                filename: `g${gIdx}_s${sgIdx}_v${iterLabel}_${letter}.${ext}`,
+                iterationLabel: ai.iterationLabel || '',
+                originalPath: ai.url || ''
+              };
+            }).filter(p => p.originalPath);
+
+            return {
+              subgroupName: subgroup.name,
+              summary: { who: summary.who || '', when: summary.when || '', where: summary.where || '', what: summary.what || '', emotion: summary.emotion || '' },
+              originalPhotos,
+              aiPhotos
+            };
+          })
+        }));
+
+        // 3. 组装 interGroupSummaries（只存文本）
+        const interGroupSummariesData = {};
+        for (const [key, val] of Object.entries(this.interGroupSummaries || {})) {
+          interGroupSummariesData[key] = val?.data?.text || '';
+        }
+
+        // 4. stage2QA & stage4QA
+        const stage2QA = (this.questions || [])
+          .filter(q => q.answered)
+          .map(q => ({ question: q.text, answer: q.answer || '' }));
+
+        const stage4QA = (this.stage4Questions || [])
+          .filter(q => q.answered)
+          .map(q => ({ question: q.text, answer: q.answer || '' }));
+
+        // 5. myPhotoStory（分别保存 stage3 和 stage4 的最终文本）
+        const myPhotoStory = {
+          stage3Text: this.assistantIntegratedText || '',
+          stage4Text: this.assistantUpdatedText || '',
+          finalText: this.assistantUpdatedText || this.assistantIntegratedText || '',
+          source: this.assistantUpdatedText ? 'userEdited' : (this.assistantIntegratedText ? 'aiGenerated' : 'none')
+        };
+
+        // 6. storyItems（去除 isEditing/editBuffer 等 UI 字段）
+        const storyItemsClean = (this.storyItems || []).map(item => ({
+          url: item.url,
+          filename: (item.url || '').split('/').pop().split('?')[0],
+          type: item.type,
+          groupName: item.groupName,
+          subgroupName: item.subgroupName,
+          caption: item.text || ''
+        }));
+
+        // 7. video
+        const videoData = this.aiVideo?.url
+          ? { url: this.aiVideo.url, filename: 'story.' + ((this.aiVideo.url.split('?')[0]).split('.').pop() || 'mp4') }
+          : null;
+
+        // 8. 组装最终 payload
+        const payload = {
+          log: {
+            meta: {
+              userId: this.userId,
+              sessionId: this.sessionId,
+              savedAt: new Date().toISOString(),
+              stageReached: this.currentStage
+            },
+            narratives: {
+              stage1: this.userNarratives[1] || '',
+              stage5: this.userNarratives[5] || ''
+            },
+            photoStructure,
+            interGroupSummaries: interGroupSummariesData,
+            stage2QA,
+            stage4QA,
+            myPhotoStory,
+            storyItems: storyItemsClean,
+            video: videoData
+          },
+          assets
+        };
+
+        await axios.post('http://127.0.0.1:5000/save-experiment-log', payload);
+        alert('日志已保存！');
+      } catch (err) {
+        console.error('[saveExperimentLog] 失败:', err);
+        alert('保存失败，请查看控制台');
+      }
+    },
   }
 }
 </script>
