@@ -1,44 +1,42 @@
-2026/03/08-23:34:50.346 202ea1 Reusing MANIFEST /Users/starry/Documents/sss_files/FDUVIS/storytelling/story-prototype/playwright_profile/Default/Local Storage/leveldb/MANIFEST-000001
-2026/03/08-23:34:50.348 202ea1 Recovering log #106
-2026/03/08-23:34:50.349 202ea1 Level-0 table #109: started
-2026/03/08-23:34:50.353 202ea1 Level-0 table #109: 63086 bytes OK
-2026/03/08-23:34:50.354 202ea1 Delete type=0 #106
-2026/03/08-23:35:50.362 202ea4 Level-0 table #112: started
-2026/03/08-23:35:50.367 202ea4 Level-0 table #112: 162154 bytes OK
-2026/03/08-23:35:50.369 202ea4 Delete type=0 #110
-2026/03/08-23:35:50.369 202ea4 Compacting 4@0 + 1@1 files
-2026/03/08-23:35:50.374 202ea4 Generated table #113@0: 54 keys, 200307 bytes
-2026/03/08-23:35:50.374 202ea4 Compacted 4@0 + 1@1 files => 200307 bytes
-2026/03/08-23:35:50.375 202ea4 compacted to: files[ 0 1 1 0 0 0 0 ]
-2026/03/08-23:35:50.375 202ea4 Delete type=2 #103
-2026/03/08-23:35:50.375 202ea4 Delete type=2 #105
-2026/03/08-23:35:50.375 202ea4 Delete type=2 #107
-2026/03/08-23:35:50.376 202ea4 Delete type=2 #112
-2026/03/08-23:35:50.376 202ea4 Delete type=2 #109
-2026/03/08-23:37:14.579 202ea4 Level-0 table #115: started
-2026/03/08-23:37:14.582 202ea4 Level-0 table #115: 69448 bytes OK
-2026/03/08-23:37:14.585 202ea4 Delete type=0 #111
-2026/03/08-23:38:53.002 202fe1 Level-0 table #117: started
-2026/03/08-23:38:53.005 202fe1 Level-0 table #117: 73105 bytes OK
-2026/03/08-23:38:53.007 202fe1 Delete type=0 #114
-2026/03/08-23:40:53.001 202fe1 Level-0 table #119: started
-2026/03/08-23:40:53.006 202fe1 Level-0 table #119: 79975 bytes OK
-2026/03/08-23:40:53.008 202fe1 Delete type=0 #116
-2026/03/08-23:41:53.000 202fe1 Level-0 table #121: started
-2026/03/08-23:41:53.006 202fe1 Level-0 table #121: 79771 bytes OK
-2026/03/08-23:41:53.008 202fe1 Delete type=0 #118
-2026/03/08-23:41:53.009 202fe1 Compacting 4@0 + 1@1 files
-2026/03/08-23:41:53.016 202fe1 Generated table #122@0: 55 keys, 208182 bytes
-2026/03/08-23:41:53.016 202fe1 Compacted 4@0 + 1@1 files => 208182 bytes
-2026/03/08-23:41:53.017 202fe1 compacted to: files[ 0 1 1 0 0 0 0 ]
-2026/03/08-23:41:53.017 202fe1 Delete type=2 #117
-2026/03/08-23:41:53.017 202fe1 Delete type=2 #115
-2026/03/08-23:41:53.017 202fe1 Delete type=2 #113
-2026/03/08-23:41:53.017 202fe1 Delete type=2 #121
-2026/03/08-23:41:53.017 202fe1 Delete type=2 #119
-2026/03/08-23:42:53.000 202ea1 Level-0 table #124: started
-2026/03/08-23:42:53.003 202ea1 Level-0 table #124: 43250 bytes OK
-2026/03/08-23:42:53.007 202ea1 Delete type=0 #120
-2026/03/08-23:43:42.408 202ea1 Level-0 table #126: started
-2026/03/08-23:43:42.413 202ea1 Level-0 table #126: 45753 bytes OK
-2026/03/08-23:43:42.417 202ea1 Delete type=0 #123
+2026/03/14-22:26:06.489 463bd2 Reusing MANIFEST /Users/starry/Documents/sss_files/FDUVIS/storytelling/story-prototype/playwright_profile/Default/Local Storage/leveldb/MANIFEST-000001
+2026/03/14-22:26:06.491 463bd2 Recovering log #125
+2026/03/14-22:26:06.492 463bd2 Reusing old log /Users/starry/Documents/sss_files/FDUVIS/storytelling/story-prototype/playwright_profile/Default/Local Storage/leveldb/000125.log 
+2026/03/14-22:27:06.498 463bd6 Level-0 table #129: started
+2026/03/14-22:27:06.511 463bd6 Level-0 table #129: 185585 bytes OK
+2026/03/14-22:27:06.519 463bd6 Delete type=0 #125
+2026/03/14-22:28:32.502 463bd6 Level-0 table #131: started
+2026/03/14-22:28:32.507 463bd6 Level-0 table #131: 34053 bytes OK
+2026/03/14-22:28:32.517 463bd6 Delete type=0 #128
+2026/03/14-22:28:32.519 463bd6 Compacting 4@0 + 1@1 files
+2026/03/14-22:28:32.525 463bd6 Generated table #132@0: 55 keys, 184982 bytes
+2026/03/14-22:28:32.525 463bd6 Compacted 4@0 + 1@1 files => 184982 bytes
+2026/03/14-22:28:32.526 463bd6 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/03/14-22:28:32.527 463bd6 Delete type=2 #129
+2026/03/14-22:28:32.527 463bd6 Delete type=2 #122
+2026/03/14-22:28:32.527 463bd6 Delete type=2 #131
+2026/03/14-22:28:32.527 463bd6 Delete type=2 #124
+2026/03/14-22:28:32.527 463bd6 Delete type=2 #126
+2026/03/14-22:31:09.394 463f9a Level-0 table #134: started
+2026/03/14-22:31:09.396 463f9a Level-0 table #134: 38738 bytes OK
+2026/03/14-22:31:09.398 463f9a Delete type=0 #130
+2026/03/14-22:32:01.343 463bd2 Level-0 table #136: started
+2026/03/14-22:32:01.348 463bd2 Level-0 table #136: 41492 bytes OK
+2026/03/14-22:32:01.353 463bd2 Delete type=0 #133
+2026/03/14-22:32:09.397 463bd6 Level-0 table #138: started
+2026/03/14-22:32:09.406 463bd6 Level-0 table #138: 43722 bytes OK
+2026/03/14-22:32:09.407 463bd6 Delete type=0 #135
+2026/03/14-22:33:09.395 463bd6 Level-0 table #140: started
+2026/03/14-22:33:09.401 463bd6 Level-0 table #140: 44642 bytes OK
+2026/03/14-22:33:09.402 463bd6 Delete type=0 #137
+2026/03/14-22:33:09.402 463bd6 Compacting 4@0 + 1@1 files
+2026/03/14-22:33:09.406 463bd6 Generated table #141@0: 55 keys, 191225 bytes
+2026/03/14-22:33:09.406 463bd6 Compacted 4@0 + 1@1 files => 191225 bytes
+2026/03/14-22:33:09.407 463bd6 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/03/14-22:33:09.407 463bd6 Delete type=2 #138
+2026/03/14-22:33:09.407 463bd6 Delete type=2 #140
+2026/03/14-22:33:09.407 463bd6 Delete type=2 #136
+2026/03/14-22:33:09.408 463bd6 Delete type=2 #134
+2026/03/14-22:33:09.408 463bd6 Delete type=2 #132
+2026/03/14-22:34:11.622 463bd6 Level-0 table #143: started
+2026/03/14-22:34:11.628 463bd6 Level-0 table #143: 48727 bytes OK
+2026/03/14-22:34:11.633 463bd6 Delete type=0 #139

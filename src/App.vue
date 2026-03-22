@@ -825,7 +825,7 @@
                     <span style="font-size: 12px; color: #999;">{{ isStage4CardCollapsed ? '▼ 展开' : '▲ 收起' }}</span>
                   </div>
                   <div v-show="!isStage4CardCollapsed" style="padding: 0 14px 12px; font-size: 13px; color: #333; line-height: 1.7; white-space: pre-wrap; max-height: 300px; overflow-y: auto;">
-                    {{ assistantUpdatedText || '（Stage 4 暂无文本）' }}
+                    {{ stage4AddedSentencesText || assistantUpdatedText || '（Stage 4 暂无文本）' }}
                   </div>
                 </div>
               </div>
@@ -1362,6 +1362,7 @@ export default {
       stage4QA: [],
       originalPhotosBase64: [],
       aiPhotosHistory: [],
+      stage4TextIterations: [],
       stage4Iterations: [],
       stage4Modifications: [],
       userAgent: navigator.userAgent,
@@ -1618,6 +1619,11 @@ export default {
           side,
         };
       });
+    },
+    // Stage 4 话外之音：所有 subgroup 中通过 QA 追加的回忆补充句（origin_pair_index === null）
+    stage4AddedSentencesText() {
+      const added = this.sentencePairs.filter(p => p.origin_pair_index === null && p.sentence);
+      return added.map(p => p.sentence).join('\n\n');
     },
   },
   mounted() {
@@ -3178,22 +3184,27 @@ export default {
         alert('内容不能为空');
         return;
       }
+      // 先缓存 before / after，再修改状态，避免清空 buffer 后记录到空串
+      const beforeText = this._assistantBeforeEdit || '';
+      const afterText = this.assistantEditBuffer.trim();
+
       // 将编辑后文本 → 覆盖原整合文本
-      const beforeText = this._assistantBeforeEdit || " "; 
-      this.assistantIntegratedText = this.assistantEditBuffer.trim();
+      this.assistantIntegratedText = afterText;
       // 清空 "更新文本"（因为已合并进主文本）
       this.assistantUpdatedText = '';
       // 退出编辑模式
       this.assistantEditMode = false;
       this.assistantEditBuffer = '';
+      delete this._assistantBeforeEdit;
       // 标记用户主动编辑过（可用于日志/提示）
       this.assistantEditedByUser = true;
 
-      // ✅【关键】记录用户修改（用于实验日志）
+      // ✅ 记录 Stage 3 文本编辑历史（在状态清空前已缓存好 before/after）
       this.stage3Modifications.push({
         timestamp: new Date().toISOString(),
-        before: beforeText, // 注意：此时 before 是旧的，应提前备份
-        after: this.assistantEditBuffer.trim()
+        beforeText,
+        afterText,
+        action: 'confirm_edit'
       });
 
       this.$message?.success?.('整合文本已更新');
@@ -3293,7 +3304,7 @@ export default {
         .filter(q => q.answered && q.answer && q.answer.trim())
         .map(q => ({ question: q.text, answer: q.answer.trim() }));
       if (qa_pairs.length === 0) {
-        alert("没有可供更新的回答，请先回答 Stage 4 的引导问题。");
+        alert('没有可供更新的回答，请先回答 Stage 4 的引导问题。');
         return;
       }
 
@@ -3304,9 +3315,10 @@ export default {
           // ==== 模式A：子分组模式 ====
           const { groupIdx, subgroupIdx } = this.activeSubgroup;
           console.log(`当前处于子分组模式：group ${groupIdx} - subgroup ${subgroupIdx}`);
-          
+          const beforeText = this.subgroupNarrativeText;
+
           const resp = await axios.post('http://127.0.0.1:5000/update-text', {
-            current_narrative: this.subgroupNarrativeText, // 仅传该 subgroup 文本
+            current_narrative: beforeText, // 仅传该 subgroup 文本
             new_qa_pairs: qa_pairs,
             subgroup_context: { groupIdx, subgroupIdx }
           }, { timeout: 120000 });
@@ -3314,46 +3326,75 @@ export default {
           if (resp.data && resp.data.updated_text) {
             const newSentence = resp.data.updated_text.trim();
             const newIndex = this.sentencePairs.length;
-            
+
             this.sentencePairs.push({
               index: newIndex,
               sentence: newSentence,
               prompt: null, // 还没生图
               group_index: groupIdx,
               subgroup_index: subgroupIdx,
-              origin_pair_index: null, // 标记为“回忆补充”
+              origin_pair_index: null, // 标记为'回忆补充'
             });
             if (!this.activeSubgroup.stage4.addedSentenceIndices) {
               this.$set(this.activeSubgroup.stage4, 'addedSentenceIndices', []);
             }
             this.activeSubgroup.stage4.addedSentenceIndices.push(newIndex);
 
-            this.$message?.success?.("回忆补充已添加到该子分组");
+            // ✅ 记录 Stage 4 文本迭代日志（subgroup 模式）
+            this.stage4TextIterations.push({
+              timestamp: new Date().toISOString(),
+              mode: 'subgroup',
+              subgroupContext: {
+                groupIdx,
+                subgroupIdx,
+                groupName: this.activeSubgroup.groupName || '',
+                subgroupName: this.activeSubgroup.name || ''
+              },
+              qaPairs: qa_pairs,
+              beforeText,
+              resultText: newSentence,
+              appliedAs: 'append_sentence'
+            });
+
+            this.$message?.success?.('回忆补充已添加到该子分组');
 
           } else {
-            console.error("update-text 返回结构异常：", resp.data);
-            alert("文本更新失败，请查看后端日志");
+            console.error('update-text 返回结构异常：', resp.data);
+            alert('文本更新失败，请查看后端日志');
           }
         } else {
           // ==== 模式B：全局模式 ====
-          console.log("当前处于全局模式，更新整体叙事文本");
+          console.log('当前处于全局模式，更新整体叙事文本');
+          const beforeText = this.assistantIntegratedText;
 
           const resp = await axios.post('http://127.0.0.1:5000/update-text', {
-            current_narrative: this.assistantIntegratedText,
+            current_narrative: beforeText,
             new_qa_pairs: qa_pairs
           }, { timeout: 120000 });
 
           if (resp.data && resp.data.updated_text) {
             this.assistantUpdatedText = String(resp.data.updated_text).trim();
-            this.$message?.success?.("文本更新完成，已在 AI 面板显示（紫色）");
+
+            // ✅ 记录 Stage 4 文本迭代日志（全局模式）
+            this.stage4TextIterations.push({
+              timestamp: new Date().toISOString(),
+              mode: 'global',
+              subgroupContext: null,
+              qaPairs: qa_pairs,
+              beforeText,
+              resultText: this.assistantUpdatedText,
+              appliedAs: 'replace_narrative'
+            });
+
+            this.$message?.success?.('文本更新完成，已在 AI 面板显示（紫色）');
           } else {
-            console.error("update-text 返回结构异常：", resp.data);
-            alert("文本更新失败，请查看后端日志");
+            console.error('update-text 返回结构异常：', resp.data);
+            alert('文本更新失败，请查看后端日志');
           }
         }
       } catch (err) {
-        console.error("更新文本错误：", err);
-        alert("更新文本时出错，请查看控制台或后端日志");
+        console.error('更新文本错误：', err);
+        alert('更新文本时出错，请查看控制台或后端日志');
       } finally {
         this.isUpdatingText = false;
       }
@@ -3937,16 +3978,26 @@ export default {
           targetInAll.iterationLabel = newAiObj.iterationLabel
         }
 
-        // ✅ 记录修改日志
+        // ✅ 记录修改日志（含 subgroup 上下文、iterationLabel、action）
+        const subgroupContext = (ai.group_index != null && ai.subgroup_index != null) ? {
+          groupIdx: ai.group_index,
+          subgroupIdx: ai.subgroup_index,
+          groupName: this.photoGroups[ai.group_index]?.name || '',
+          subgroupName: this.photoGroups[ai.group_index]?.subgroups?.[ai.subgroup_index]?.name || ''
+        } : null;
+
         this.stage4Modifications.push({
-          time: new Date().toISOString(),
+          timestamp: new Date().toISOString(),
           photoIndex: aiIdx,
           photoLabel: this.getLetterIndex(aiIdx),
+          subgroupContext,
+          oldPrompt: oldPrompt,
+          newPrompt: newPrompt,
+          userInstruction: suggestion,
           oldUrl: oldUrl,
           newUrl: newAiObj.url,
-          suggestion: suggestion,
-          oldPrompt: oldPrompt,
-          newPrompt: newPrompt
+          iterationLabel: newAiObj.iterationLabel,
+          action: 'manual_regenerate'
         })
 
         this.aiPhotosHistory.push({
@@ -4636,7 +4687,44 @@ startVideoPolling(taskId, flatPhotos, videoSequences) {
           ? { url: this.aiVideo.url, filename: 'story.' + ((this.aiVideo.url.split('?')[0]).split('.').pop() || 'mp4') }
           : null;
 
-        // 8. 组装最终 payload
+        // 8. processLogs（过程性行为日志，与最终快照分层保存）
+        const processLogs = {
+          // Stage 3：用户每次确认编辑文本的修改记录
+          stage3TextEdits: (this.stage3Modifications || []).map(m => ({
+            timestamp: m.timestamp,
+            beforeText: m.beforeText || '',
+            afterText: m.afterText || '',
+            action: m.action || 'confirm_edit'
+          })),
+          // Stage 4：每轮由 QA 触发的文本更新记录
+          stage4TextIterations: (this.stage4TextIterations || []).map(it => ({
+            timestamp: it.timestamp,
+            mode: it.mode,
+            subgroupContext: it.subgroupContext || null,
+            qaPairs: it.qaPairs || [],
+            beforeText: it.beforeText || '',
+            resultText: it.resultText || '',
+            appliedAs: it.appliedAs
+          })),
+          // Stage 4：每次手动修改 prompt 并重生成图片的记录
+          stage4ImagePromptEdits: (this.stage4Modifications || []).map(m => ({
+            timestamp: m.timestamp,
+            photoIndex: m.photoIndex,
+            photoLabel: m.photoLabel || '',
+            subgroupContext: m.subgroupContext || null,
+            oldPrompt: m.oldPrompt || '',
+            newPrompt: m.newPrompt || '',
+            userInstruction: m.userInstruction || '',
+            oldUrl: m.oldUrl || '',
+            newUrl: m.newUrl || '',
+            iterationLabel: m.iterationLabel || '',
+            action: m.action || 'manual_regenerate'
+          })),
+          // 全局图像生成历史（含 Stage 3 初始生成、Stage 4 手动更新等原始轨迹）
+          aiImageGenerationHistory: (this.aiPhotosHistory || [])
+        };
+
+        // 9. 组装最终 payload
         const payload = {
           log: {
             meta: {
@@ -4655,7 +4743,8 @@ startVideoPolling(taskId, flatPhotos, videoSequences) {
             stage4QA,
             myPhotoStory,
             storyItems: storyItemsClean,
-            video: videoData
+            video: videoData,
+            processLogs
           },
           assets
         };
