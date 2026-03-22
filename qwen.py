@@ -5,7 +5,7 @@ from openai import OpenAI
 # API_KEY = "sk-fbdc82229399417892a94c001b5ea873" # 替换成自己的key
 BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 # API_KEY = "sk-cea9886dd0c349abb416351e821ccd2f"
-API_KEY = "sk-e01bb34a11b944d989665a88ede15b88"
+API_KEY = "sk-52ab14072e264688a416c5bbf2eefb7f"
 
 class QwenChat:
     def __init__(self, api_key=API_KEY, base_url=BASE_URL):

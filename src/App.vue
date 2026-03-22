@@ -3316,12 +3316,15 @@ export default {
           const { groupIdx, subgroupIdx } = this.activeSubgroup;
           console.log(`当前处于子分组模式：group ${groupIdx} - subgroup ${subgroupIdx}`);
           const beforeText = this.subgroupNarrativeText;
+          console.log(`DEBUG]${beforeText}`)
 
           const resp = await axios.post('http://127.0.0.1:5000/update-text', {
             current_narrative: beforeText, // 仅传该 subgroup 文本
             new_qa_pairs: qa_pairs,
             subgroup_context: { groupIdx, subgroupIdx }
           }, { timeout: 120000 });
+
+          console.log(`DEBUG]resp got`)
 
           if (resp.data && resp.data.updated_text) {
             const newSentence = resp.data.updated_text.trim();
