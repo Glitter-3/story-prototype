@@ -193,7 +193,7 @@
               @input="onEditableInput"
               @keydown="onEditableKeydown"
               :placeholder="'请在此输入您对照片的描述、回忆或故事……'"
-              style="flex: 1; white-space: pre-wrap; overflow-y: auto; min-height: 0; border: 1px solid #ccc; padding: 10px; border-radius: 6px; color: black; margin: 0 0 8px 0;"
+              style="flex: 1; white-space: pre-wrap; overflow-y: auto; min-height: 0; border: 1px solid #ccc; padding: 10px; border-radius: 6px; color: #7c83b9; margin: 0 0 8px 0;"
             ></div>
           </div>
 
@@ -716,6 +716,8 @@
 
             <!-- ===== 照片面板（与 stage4 一致的布局） ===== -->
             <div v-if="!showStoryPanel" class="photo-panel" style="border-radius:8px;">
+              <!-- 已生成图文故事时，显示返回图文故事按钮 -->
+              <div v-if="storyItems.length > 0" class="s5-story-back" @click="showStoryPanel = true" style="margin-bottom:8px;">↩ 返回图文故事</div>
               <div class="group-section">
                 <div class="timeline vertical">
                   <div
@@ -945,7 +947,7 @@
                   contenteditable="true"
                   @input="onEditableInput5"
                   :placeholder="'请在此输入您对故事回顾的描述、感想或补充……'"
-                  style="flex:1; min-height:0; white-space:pre-wrap; overflow-y:auto; border:1px solid #ccc; padding:10px; border-radius:6px; color:black;"
+                  style="flex:1; min-height:0; white-space:pre-wrap; overflow-y:auto; border:1px solid #ccc; padding:10px; border-radius:6px; color:#7c83b9;"
                 ></div>
               </div>
             </div>
@@ -1056,15 +1058,16 @@
               :disabled="isFetchingS4Questions || activeSubgroup.stage4.status !== 'reviewing'"
               style="width:100%; background:linear-gradient(135deg,#c3c9e8,#d4c5e0); color:white; border-radius:6px; font-size:14px; font-weight:bold;"
             >
-              {{ isFetchingS4Questions ? '获取问题中...' : '继续回忆' }}
+              {{ isFetchingS4Questions ? '生成提问中...' : '获取新一轮提问' }}
             </button>
             <button
               v-if="stage4Questions.some(q => q.answered)"
               class="control-btn"
               @click="updateText"
+              :disabled="isUpdatingText"
               style="width:100%; background:linear-gradient(135deg,#c3c9e8,#d4c5e0); color:white; border-radius:6px; font-size:14px; font-weight:bold;"
             >
-              整合回忆文本
+              {{ isUpdatingText ? '整合文本中...' : '整合回忆文本' }}
             </button>
             <button
               v-if="activeSubgroup.stage4.addedSentenceIndices.length > 0"
@@ -1155,7 +1158,9 @@
             </div>
           </div>
 
-          <button v-if="currentStage === 2" class="control-btn primary" @click="fetchQuestions">开始提问</button>
+          <button v-if="currentStage === 2" class="control-btn primary" @click="fetchQuestions" :disabled="isFetchingQuestions">
+            {{ isFetchingQuestions ? '生成提问中...' : '开始提问' }}
+          </button>
           <button v-if="currentStage === 3" class="control-btn primary" @click="integrateText()">
             {{ integrating ? '整合中...' : (isUpdatingText ? '更新中...' : '整合文本') }}
           </button>
@@ -1402,6 +1407,7 @@ export default {
       stage4Questions: [],
       assistantUpdatedText: '',
       isFetchingS4Questions: false,
+      isFetchingQuestions: false,
       isUpdatingText: false,
       aiResultHeight: 220,
       isResizingAiResult: false,
@@ -1620,10 +1626,21 @@ export default {
         };
       });
     },
-    // Stage 4 话外之音：所有 subgroup 中通过 QA 追加的回忆补充句（origin_pair_index === null）
+    // Stage 4 话外之音：每个 subgroup 只取最后一条回忆补充句（多次"整合文本"时只保留最终版）
     stage4AddedSentencesText() {
-      const added = this.sentencePairs.filter(p => p.origin_pair_index === null && p.sentence);
-      return added.map(p => p.sentence).join('\n\n');
+      // 筛出所有话外之音句，按 index 升序
+      const added = this.sentencePairs
+        .filter(p => p.origin_pair_index === null && p.sentence)
+        .sort((a, b) => a.index - b.index);
+
+      // 按 group+subgroup 去重，同一 subgroup 保留最后一条（最新迭代的结果）
+      const latestBySubgroup = new Map();
+      for (const p of added) {
+        const key = `${p.group_index}_${p.subgroup_index}`;
+        latestBySubgroup.set(key, p.sentence);
+      }
+
+      return [...latestBySubgroup.values()].join('\n\n');
     },
   },
   mounted() {
@@ -1804,6 +1821,13 @@ export default {
     onEditableInput(e) {
       const el = this.$refs.editableNarrative;
       if (!el) return;
+
+      // Stage 1：全文直接保存，不做历史节点处理
+      if (this.currentStage === 1) {
+        this.userNarratives[1] = el.innerHTML;
+        return;
+      }
+
       const sel = window.getSelection();
       if (!sel || sel.rangeCount === 0) {
         this.userNarratives[this.currentStage] = el.innerHTML;
@@ -1950,6 +1974,9 @@ export default {
         if (!editor) return;
         editor.innerHTML = this.userNarratives[stage] || '';
 
+        // Stage 1 不需要 blackSpan 逻辑，用户直接自由输入
+        if (stage === 1) return;
+
         let blackSpan = null;
         const spans = Array.from(editor.querySelectorAll('span'));
         for (const s of spans.reverse()) {
@@ -1974,9 +2001,16 @@ export default {
         this.$nextTick(() => {
           const editor5 = this.$refs.editableNarrative5;
           if (editor5) {
-            // 如果 stage5 口述还是空的，预填 stage1 内容供用户在此基础上修改
+            // 如果 stage5 口述还是空的，预填 stage1 内容（用紫色包裹，与 stage1 视觉一致）
             if (!this.userNarratives[5]) {
-              this.userNarratives[5] = this.userNarratives[1] || '';
+              const rawText = (() => {
+                const tmp = document.createElement('div');
+                tmp.innerHTML = this.userNarratives[1] || '';
+                return tmp.textContent || tmp.innerText || '';
+              })();
+              if (rawText) {
+                this.userNarratives[5] = `<span style="color:#7c83b9;">${this.escapeHtml(rawText)}</span><span style="color:#7c83b9;">&#8203;</span>`;
+              }
             }
             editor5.innerHTML = this.userNarratives[5];
           }
@@ -1984,11 +2018,6 @@ export default {
       }
 
       console.log(`已切换到 Stage ${stage}`);
-      if (stage === 1) {
-        this.$nextTick(() => {
-          this.userNarratives[stage] = this.$refs.editableNarrative?.innerHTML || '';
-        });
-      }
     },
     splitHistorySpanAtRange(purpleSpan, range) {
       const tmp = document.createElement('div');
@@ -2295,6 +2324,7 @@ export default {
         console.error('photoGroups is empty, abort fetchQuestions');
         return;
       }
+      this.isFetchingQuestions = true;
       try {
         const groupsPayload = await Promise.all(
           this.photoGroups.map(async (group, gIdx) => ({
@@ -2335,6 +2365,8 @@ export default {
 
       } catch (err) {
         console.error("Error fetching grouped questions:", err);
+      } finally {
+        this.isFetchingQuestions = false;
       }
     },
 
@@ -3336,7 +3368,7 @@ export default {
               prompt: null, // 还没生图
               group_index: groupIdx,
               subgroup_index: subgroupIdx,
-              origin_pair_index: null, // 标记为'回忆补充'
+              origin_pair_index: null, // 标记为'回忆补充'，每次整合覆盖旧版，computed 只取最后一条
             });
             if (!this.activeSubgroup.stage4.addedSentenceIndices) {
               this.$set(this.activeSubgroup.stage4, 'addedSentenceIndices', []);
